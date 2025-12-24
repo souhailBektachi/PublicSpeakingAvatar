@@ -1,0 +1,14 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+soundfile = "*"
+numpy = "*"
+librosa = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"
