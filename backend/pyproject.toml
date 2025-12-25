@@ -1,0 +1,22 @@
+[tool.poetry]
+package-mode = false
+
+[project]
+name = "backend"
+version = "0.1.0"
+description = ""
+authors = [
+  { name = "Souhail Bektachi", email = "souhalshiv@gmail.com" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+soundfile = "*"
+numpy = "*"
+librosa = "*"
+pydantic = "*"
+assemblyai = "*"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
