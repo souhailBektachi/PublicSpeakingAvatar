@@ -16,6 +16,11 @@ numpy = "*"
 librosa = "*"
 pydantic = "*"
 assemblyai = "*"
+pydantic-settings = "*"
+python-dotenv = "^1.2.1"
+fastapi = "*"
+uvicorn = "*"
+websockets = "*"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
