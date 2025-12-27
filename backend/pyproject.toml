@@ -21,6 +21,8 @@ python-dotenv = "^1.2.1"
 fastapi = "*"
 uvicorn = "*"
 websockets = "*"
+elevenlabs = "^2.27.0"
+praat-parselmouth = "*"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
