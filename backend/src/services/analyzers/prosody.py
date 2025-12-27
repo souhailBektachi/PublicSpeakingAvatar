@@ -1,8 +1,9 @@
 import numpy as np
 import librosa
-import crepe
+import parselmouth
 from typing import Optional
 from src.schemas.audio_metrics import AudioFeatures
+from src.services.analyzers.interpreter import ProsodyInterpreter
 
 class ProsodyAnalyzer:
     def __init__(self, sample_rate: int = 16000):
@@ -10,56 +11,83 @@ class ProsodyAnalyzer:
         self.window_size = 1.5
         self.overlap_duration = 0.5
         self._buffer = np.array([], dtype=np.float32)
-        self.confidence_threshold = 0.5
+        self.processed_samples = 0
+
+        self.min_voiced_prob = 0.4
+        self.tonality_threshold = 0.6
+        self.stability_threshold_hz = 25.0
+        self.silence_threshold = 0.01
+        
+        self.interpreter = ProsodyInterpreter()
 
     def process(self, new_chunk: np.ndarray) -> Optional[AudioFeatures]:
         self._buffer = np.concatenate((self._buffer, new_chunk))
+        self.processed_samples += len(new_chunk)
 
         if (len(self._buffer) / self.target_sr) < self.window_size:
             return None
 
-        metrics = self._analyze(self._buffer)
+        window_start = (self.processed_samples - len(self._buffer)) / self.target_sr
+        window_end = self.processed_samples / self.target_sr
+        metrics = self._analyze(self._buffer, window_start, window_end)
 
         overlap_samples = int(self.overlap_duration * self.target_sr)
         self._buffer = self._buffer[-overlap_samples:]
 
         return metrics
 
-    def _analyze(self, y: np.ndarray) -> AudioFeatures:
-        volume = float(np.sqrt(np.mean(y ** 2)))
+    def _analyze(self, y: np.ndarray, start_time: float, end_time: float) -> AudioFeatures:
+        volume = float(np.sqrt(np.mean(y**2)))
+        
+        hop_length = int(self.target_sr * 0.05) 
+        frame_rms = librosa.feature.rms(y=y, frame_length=hop_length*2, hop_length=hop_length)[0]
+        silent_frames = np.sum(frame_rms < self.silence_threshold)
+        silence_ratio = float(silent_frames * (hop_length / self.target_sr)) / (end_time - start_time)
 
-        _, frequency, confidence, _ = crepe.predict(
-            y,
-            self.target_sr,
-            model_capacity="small",
-            step_size=10,
-            viterbi=False,
-            verbose=0
-        )
+        sound = parselmouth.Sound(y, sampling_frequency=self.target_sr)
+        pitch = sound.to_pitch(time_step=0.01, pitch_floor=75, pitch_ceiling=600)
+        pitch_values = pitch.selected_array["frequency"]
 
-        voiced_mask = confidence > self.confidence_threshold
-        voiced_frequencies = frequency[voiced_mask]
+        voiced_mask = pitch_values > 0
+        voiced_frequencies = pitch_values[voiced_mask]
+        voiced_prob_val = float(np.mean(voiced_mask)) if len(voiced_mask) > 0 else 0.0
 
-        if len(voiced_frequencies) > 0:
+        if len(voiced_frequencies) > 5:
             p_mean = float(np.mean(voiced_frequencies))
-            p_std = float(np.std(voiced_frequencies))
+            q75, q25 = np.percentile(voiced_frequencies, [75, 25])
+            iqr = q75 - q25
+            p_std = float(iqr / 1.35) 
         else:
             p_mean = 0.0
             p_std = 0.0
-
-        voiced_prob_val = float(np.mean(voiced_mask))
 
         flatness = float(np.mean(librosa.feature.spectral_flatness(y=y)))
         tonality = 1.0 - flatness
 
         hesitation_val = 0.0
-        if tonality > 0.6 and voiced_prob_val > 0.8 and p_std < 5.0:
-            hesitation_val = float(tonality * voiced_prob_val * (1.0 - min(p_std / 10.0, 1.0)))
 
-        return AudioFeatures(
+        if silence_ratio > 0.66:
+             hesitation_val = (silence_ratio - 0.66) * 3.0
+             hesitation_val = min(hesitation_val, 1.0)
+        elif (
+            tonality > self.tonality_threshold
+            and voiced_prob_val > self.min_voiced_prob
+            and p_std < self.stability_threshold_hz
+        ):
+            stability_score = 1.0 - (p_std / self.stability_threshold_hz)
+            hesitation_val = voiced_prob_val * stability_score
+
+        features = AudioFeatures(
+            start_time=start_time,
+            end_time=end_time,
             pitch_mean=p_mean,
             pitch_std=p_std,
             voiced_prob=voiced_prob_val,
-            hesitation_rate=hesitation_val,
-            volume=volume
+            hesitation_rate=max(0.0, hesitation_val),
+            volume=volume,
         )
+        
+        features.feedback = self.interpreter.interpret(features)
+        
+        return features
+

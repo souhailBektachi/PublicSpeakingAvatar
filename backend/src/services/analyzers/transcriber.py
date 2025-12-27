@@ -3,6 +3,7 @@ import queue
 import os
 import logging
 import numpy as np
+from typing import Optional
 from dotenv import load_dotenv
 
 from assemblyai.streaming.v3 import (
@@ -11,6 +12,8 @@ from assemblyai.streaming.v3 import (
     StreamingEvents,
     StreamingParameters
 )
+
+from src.schemas.audio_metrics import TimestampsSegment
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -24,13 +27,16 @@ class Transcriber:
         self._result_queue = queue.Queue()
         self._running = True
         self.client = None
+        self.processed_samples = 0
         
         self._thread = threading.Thread(target=self._client_loop, daemon=True)
         self._thread.start()
 
-    def process(self, new_chunk: np.ndarray):
+    def process(self, new_chunk: np.ndarray) -> Optional[TimestampsSegment]:
+        chunk_start = self.processed_samples / self.sample_rate
         pcm_data = (new_chunk * 32767).astype(np.int16).tobytes()
-        self._audio_queue.put(pcm_data)
+        self._audio_queue.put((pcm_data, chunk_start))
+        self.processed_samples += len(new_chunk)
         
         try:
             return self._result_queue.get_nowait()
@@ -47,7 +53,14 @@ class Transcriber:
 
         def on_turn(client, event):
             if event.transcript:
-                self._result_queue.put(event.transcript)
+                current_time = self.processed_samples / self.sample_rate
+                segment = TimestampsSegment(
+                    text=event.transcript,
+                    start_time=max(0.0, current_time - 2.0),
+                    end_time=current_time,
+                    is_final=True
+                )
+                self._result_queue.put(segment)
 
         def on_error(client, error):
             logger.error(f"AssemblyAI Error: {error}")
@@ -71,9 +84,10 @@ class Transcriber:
 
     def _audio_generator(self):
         while self._running:
-            chunk = self._audio_queue.get()
-            if chunk is None:
+            item = self._audio_queue.get()
+            if item is None:
                 break
+            chunk, _ = item
             yield chunk
 
     def stop(self):
