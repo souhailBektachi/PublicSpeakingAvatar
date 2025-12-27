@@ -26,12 +26,16 @@ async def audio_websocket_endpoint(websocket: WebSocket):
             try: 
                 payload = StreamPayload.model_validate_json(data)
                 
-                metrics = await run_in_threadpool(session.engine.process_stream, payload.audio_chunk)
+                prosody_metrics, transcript_segment = await run_in_threadpool(
+                    session.engine.process_stream, 
+                    payload.audio_chunk
+                )
 
-                if metrics:
+                if prosody_metrics or transcript_segment:
                     response = FeedbackResponse(
                         processed_at=payload.timestamp,
-                        metrics=metrics
+                        metrics=prosody_metrics,
+                        transcript=transcript_segment
                     )
                     await websocket.send_text(response.model_dump_json())
 
