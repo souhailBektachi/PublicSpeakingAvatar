@@ -2,7 +2,7 @@ from fastapi import WebSocket
 from typing import Dict, Optional
 import logging
 from src.services.audio_engine import AudioEngine
-from src.schemas.audio_metrics import AudioFeatures
+from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,19 @@ class SessionManager:
     def get_session(self, session_id: str) -> Optional[Session]:
         return self.active_sessions.get(session_id)
 
-    def update_transcript(self, session_id: str, text: str):
-        if session_id in self.active_sessions:
-            self.active_sessions[session_id].transcript_history.append(text)
-
-    def update_metrics(self, session_id: str, metrics: AudioFeatures):
-        if session_id in self.active_sessions:
-            self.active_sessions[session_id].metrics_history.append(metrics)
+    def store_results(
+        self,
+        session_id: str,
+        metrics: Optional[AudioFeatures],
+        transcript: Optional[TimestampsSegment]
+    ):
+        if session_id not in self.active_sessions:
+            return
+        session = self.active_sessions[session_id]
+        if metrics:
+            session.metrics_history.append(metrics)
+        if transcript and transcript.text:
+            session.transcript_history.append(transcript.text)
     
     def get_recent_metrics(self , session_id: str , limit : int = 10) -> list[AudioFeatures]:
         if session_id in self.active_sessions:
