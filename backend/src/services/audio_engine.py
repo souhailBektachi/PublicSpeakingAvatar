@@ -3,8 +3,8 @@ import io
 import numpy as np
 import soundfile as sf
 import librosa
-from typing import Optional
-from src.schemas.audio_metrics import AudioFeatures
+from typing import Optional, Tuple
+from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 from src.services.analyzers.prosody import ProsodyAnalyzer
 from src.services.analyzers.transcriber import Transcriber
 
@@ -15,33 +15,13 @@ class AudioEngine:
         self.prosody = ProsodyAnalyzer(sample_rate=self.target_sr)
         self.transcriber = Transcriber(sample_rate=self.target_sr)
 
-    def process_stream(self, base64_chunk: str) -> Optional[AudioFeatures]:
+    def process_stream(self, base64_chunk: str) -> Tuple[Optional[AudioFeatures], Optional[TimestampsSegment]]:
         new_audio = self._decode_chunk(base64_chunk)
         
-        self.processed_samples += len(new_audio)
-        current_time = self.processed_samples / self.target_sr
-
         prosody_metrics = self.prosody.process(new_audio)
-        transcript_text = self.transcriber.process(new_audio)
+        transcript_segment = self.transcriber.process(new_audio)
 
-        if prosody_metrics:
-            prosody_metrics.timestamp = current_time
-            if transcript_text:
-                prosody_metrics.transcript = transcript_text
-            return prosody_metrics
-        
-        if transcript_text:
-            return AudioFeatures(
-                timestamp=current_time,
-                pitch_mean=0.0,
-                pitch_std=0.0,
-                voiced_prob=0.0,
-                hesitation_rate=0.0,
-                volume=0.0,
-                transcript=transcript_text
-            )
-
-        return None
+        return prosody_metrics, transcript_segment
 
     def shutdown(self):
         self.transcriber.stop()
