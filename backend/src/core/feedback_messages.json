@@ -1,0 +1,216 @@
+{
+  "pitch_dynamics": {
+    "Monotone": [
+      "Your delivery is a bit flat. Try varying your intonation to keep the audience engaged.",
+      "You're staying on one note. Imagine you're telling a story to a friend to add more life.",
+      "A bit monotone here. Try to emphasize key words by shifting your pitch up or down.",
+      "Your voice lacks variety. Think about the emotions behind your words to naturally shift your tone.",
+      "Try to avoid the 'robot' voice. Let your pitch rise and fall with the meaning of your sentences.",
+      "You're speaking in a narrow range. Experiment with higher and lower notes to add color.",
+      "Inject some energy! Varying your pitch helps highlight the most important parts of your message.",
+      "It sounds a bit repetitive. Break the pattern by changing your pitch at the start of new ideas.",
+      "Your pitch is very steady. Use more inflection to signal questions or excitement.",
+      "Try to 'paint' with your voice. Use pitch dynamics to make your points stand out."
+    ],
+    "Typical": [
+      "Good natural pitch variation. You sound conversational and easy to follow.",
+      "Nice job with the intonation. Your voice has a pleasant, engaging rhythm.",
+      "Your pitch dynamics are solid. You're using your voice effectively to communicate.",
+      "Great vocal variety! It keeps the listener interested in what you're saying.",
+      "You have a good handle on your pitch. It sounds natural and well-balanced.",
+      "Well done on the vocal inflection. You're hitting the right notes for a clear delivery.",
+      "Your voice is expressive without being over-the-top. Keep it up!",
+      "I like the way your pitch shifts. it adds a nice layer of meaning to your speech.",
+      "Solid pitch control. You sound confident and engaged with your topic.",
+      "Your intonation is spot on. It helps guide the listener through your points."
+    ],
+    "Expressive": [
+      "Highly expressive and engaging tone! Your passion really comes through.",
+      "Excellent vocal energy. Your pitch shifts are dynamic and captivating.",
+      "You have a very animated delivery. It's great for keeping an audience's attention.",
+      "Wow, great range! Your voice is full of life and character.",
+      "Your expressive pitch makes your message feel very personal and urgent.",
+      "I love the enthusiasm in your voice. Your pitch variety is a major strength.",
+      "You're using your full vocal range beautifully. It's very professional.",
+      "Very engaging! Your pitch dynamics make every word feel important.",
+      "Your voice is incredibly dynamic. It's like a musical performance!",
+      "Great job bringing so much variety to your delivery. It's very effective."
+    ]
+  },
+  "pitch_range": {
+    "Normal": [
+      "Your pitch is within a healthy, natural range. Sounds great!",
+      "You're speaking at a very comfortable level for your voice.",
+      "Nice, steady pitch. It sounds relaxed and professional.",
+      "Your vocal range is well-centered. No signs of strain here.",
+      "Good job staying in your natural 'sweet spot' for pitch.",
+      "Your voice sounds well-supported and within a normal range.",
+      "I like the resonance you're getting in this pitch range.",
+      "You've found a good, sustainable pitch for long-form speaking.",
+      "Your pitch is very consistent and fits your natural voice well.",
+      "Great vocal placement. You sound clear and authoritative."
+    ],
+    "Vocal Fry": [
+      "Pitch is unusually low. This 'vocal fry' can sound disengaged or tired.",
+      "You're dropping into a gravelly low register. Try to lift your voice slightly.",
+      "Watch out for that low, creaky sound. It can make you harder to understand.",
+      "Try to add more breath support to avoid that 'fry' at the end of sentences.",
+      "Your pitch is dipping a bit too low. Aim for a clearer, more resonant tone.",
+      "That low register sounds a bit strained. Try to speak from a slightly higher place.",
+      "Avoid the 'creak'. Lifting your pitch just a touch will sound more professional.",
+      "You're losing clarity in the lower range. Focus on keeping your voice 'up'.",
+      "Vocal fry detected. It can come across as lack of confidence; try to brighten your tone.",
+      "Keep your voice energized to avoid falling into that low, gravelly range."
+    ],
+    "Vocal Strain": [
+      "Pitch is unusually high. Relax your throat to avoid vocal fatigue.",
+      "You sound a bit tight. Try to lower your pitch slightly for a more relaxed tone.",
+      "Watch out for 'upspeaking' or staying too high. It can sound a bit anxious.",
+      "Your voice is hitting some very high notes. Take a deep breath and let it settle.",
+      "Try to speak from your chest rather than your throat to lower the pitch.",
+      "You're pushing your voice into a high register. Relax and let it drop naturally.",
+      "That high pitch might be straining your vocal cords. Aim for a deeper resonance.",
+      "Your tone is a bit sharp. Softening your delivery will help lower the pitch.",
+      "Try to find a more grounded, lower pitch to sound more authoritative.",
+      "Relax your jaw and neck to help your voice settle into a more natural range."
+    ],
+    "Unknown": [
+      "No pitch data available. Make sure your microphone is positioned correctly.",
+      "I couldn't detect a clear pitch. Try speaking a bit more clearly.",
+      "Pitch analysis is inconclusive. Check your audio input levels.",
+      "Waiting for more audio to determine your pitch range.",
+      "Pitch detection is struggling. Ensure there's minimal background noise.",
+      "No clear vocal frequency found. Are you speaking close enough to the mic?",
+      "Pitch data is missing. Let's try another segment.",
+      "I'm not picking up your voice's pitch. Check your connection.",
+      "Pitch tracking is offline. Please continue speaking.",
+      "Unable to analyze pitch at the moment. Keep going!"
+    ]
+  },
+  "fluency": {
+    "Pausing/Slow": [
+      "High pause frequency detected. Try to connect your thoughts more smoothly.",
+      "You're pausing quite a bit. Work on your transitions to keep the flow going.",
+      "A bit hesitant here. Try to speak in longer phrases rather than short bursts.",
+      "Your pace is a bit slow due to frequent pauses. Aim for a steadier rhythm.",
+      "Try to reduce the gaps between your words for a more fluent delivery.",
+      "You're breaking up your sentences. Practice speaking through the full thought.",
+      "The flow is a bit interrupted. Focus on the 'bridge' between your ideas.",
+      "Frequent pauses can lose the audience. Try to maintain a more consistent pace.",
+      "Work on your breath control to help you speak longer segments without stopping.",
+      "Your delivery feels a bit disjointed. Aim for a smoother, more continuous flow."
+    ],
+    "Typical": [
+      "Balanced speech with natural pacing. You sound very professional.",
+      "Great rhythm! Your pauses feel intentional and well-placed.",
+      "Your fluency is excellent. You're moving through your points smoothly.",
+      "Nice, steady flow. It's very easy to follow your train of thought.",
+      "You have a good conversational pace. Not too fast, not too slow.",
+      "Well done on the pacing. You're giving the audience time to process.",
+      "Your delivery is smooth and confident. Keep this rhythm up!",
+      "I like the way you balance speech and silence. It sounds very natural.",
+      "Solid fluency. You're communicating your ideas without unnecessary breaks.",
+      "Your pacing is spot on. It feels very controlled and deliberate."
+    ],
+    "Fluent/Fast": [
+      "Continuous delivery, but ensure your audience can keep up with the speed.",
+      "You're on a roll! Just remember to breathe and let key points sink in.",
+      "Very fluent, but watch your speed. Rapid speech can be overwhelming.",
+      "You're speaking quite quickly. Try adding a few strategic pauses for emphasis.",
+      "Great energy, but don't rush. Give your words room to breathe.",
+      "You're moving fast! Slow down just a touch to ensure maximum clarity.",
+      "Your delivery is very rapid. Use pauses to signal transitions between ideas.",
+      "Fast-paced and fluent. Just make sure you're not leaving the listener behind.",
+      "You have a lot to say! Try to pace yourself so every word counts.",
+      "Excellent flow, but a bit fast. Slowing down will add more authority to your voice."
+    ]
+  },
+  "hesitation": {
+    "Detected": [
+      "Filled pause detected (Um/Uh). Try to replace these with a brief silence.",
+      "Watch out for those 'filler' words. A silent pause is much more powerful.",
+      "You're using 'um' or 'uh' to fill the gaps. Practice embracing the silence.",
+      "Try to catch yourself before saying 'uh'. It will make you sound more confident.",
+      "Filler words are creeping in. Focus on thinking ahead to avoid them.",
+      "You're hesitating with vocal fillers. Try to slow down and speak more deliberately.",
+      "Replace those 'ums' with a breath. It gives you time to think and looks poised.",
+      "Watch your fluency. Those 'uhs' can distract from your message.",
+      "Try to eliminate the vocal fillers. They can undermine your authority.",
+      "You're using fillers as a crutch. Work on being comfortable with brief pauses."
+    ],
+    "Minor": [
+      "Slight hesitation detected. You're almost there—just keep the flow going.",
+      "A few minor hesitations. Try to stay focused on your next point.",
+      "You're doing well, just a couple of small stumbles. Keep your momentum.",
+      "Almost perfectly clear! Just a tiny bit of hesitation in a few spots.",
+      "Your fluency is good, with only very minor breaks. Keep practicing.",
+      "Just a slight dip in fluency. You're handling the transitions well overall.",
+      "A few 'near-misses' with fillers. Stay mindful of your pacing.",
+      "Good job staying mostly clear. Those minor hesitations are barely noticeable.",
+      "You're speaking well. Just work on smoothing out those last few bumps.",
+      "Very close to a perfect flow. Just a little more focus on the transitions."
+    ],
+    "Clear": [
+      "No hesitations detected. Your delivery is incredibly smooth!",
+      "Great job avoiding filler words. You sound very polished and prepared.",
+      "Perfect fluency! You're moving through your speech with total confidence.",
+      "I didn't hear a single 'um' or 'uh'. That's excellent vocal control.",
+      "Your speech is very clean and direct. It's a pleasure to listen to.",
+      "Outstanding fluency. You're communicating your ideas without any clutter.",
+      "You have a very professional, filler-free delivery. Well done!",
+      "So smooth! Your lack of hesitations makes you sound very authoritative.",
+      "Excellent job staying focused and clear. Your fluency is a major asset.",
+      "Your delivery is seamless. You've clearly mastered your material."
+    ]
+  },
+  "volume": {
+    "Too Soft": [
+      "Volume is a bit low. Try to project your voice more to reach the back of the room.",
+      "You're speaking quite softly. Increase your volume for better clarity.",
+      "Don't be afraid to take up space with your voice! Speak up a bit more.",
+      "Your volume is dipping. Focus on your breath support to keep it consistent.",
+      "You sound a bit quiet. Projecting from your diaphragm will help you be heard.",
+      "Try to increase your energy level. A louder voice often sounds more confident.",
+      "You're a bit hard to hear. Aim for a more robust, projected tone.",
+      "Boost your volume slightly. You want to make sure every word is audible.",
+      "Your voice is a bit thin. Adding more volume will give it more presence.",
+      "Speak with more intention. A louder volume will help you command attention."
+    ],
+    "Clipping": [
+      "Volume is too high. You're 'clipping' the audio, which can sound distorted.",
+      "Whoa, a bit too loud! Back off the mic slightly or lower your projection.",
+      "Your volume is hitting the red zone. Try to stay within a more moderate range.",
+      "Watch out for shouting. You can be powerful without being overly loud.",
+      "The audio is distorting because of the volume. Soften your delivery a bit.",
+      "You're pushing your voice too hard. Relax and let the mic do the work.",
+      "Your volume is a bit overwhelming. Aim for a strong but controlled tone.",
+      "Try to find a balance. You're currently a bit too loud for a clear recording.",
+      "Avoid 'peaking' the audio. A slightly lower volume will sound much cleaner.",
+      "You have great energy, but it's a bit too loud. Dial it back just a touch."
+    ],
+    "Optimal": [
+      "Excellent volume level! You sound clear, strong, and well-balanced.",
+      "Perfect projection. You're hitting the ideal volume for a professional speech.",
+      "Your volume is spot on. It's easy to hear you without any distortion.",
+      "Great job maintaining a consistent, optimal volume throughout.",
+      "You have a very resonant, well-projected voice. The volume is perfect.",
+      "I love the strength in your voice. The volume level is exactly where it should be.",
+      "Very clear and audible. Your volume control is excellent.",
+      "You're speaking with great authority and the perfect amount of volume.",
+      "Solid projection. You sound confident and your volume is very professional.",
+      "Your volume is perfectly calibrated for this setting. Well done!"
+    ],
+    "Acceptable": [
+      "Volume is acceptable. You're audible and clear enough for the listener.",
+      "Good job keeping your volume at a functional level.",
+      "Your volume is fine. It's within a normal, understandable range.",
+      "You're being heard clearly. The volume is consistent and adequate.",
+      "No issues with the volume. It's at a good, conversational level.",
+      "Your projection is sufficient. You sound clear and easy to follow.",
+      "The volume is steady and within a good range for communication.",
+      "You're maintaining a decent volume level. Keep it up.",
+      "Audibility is good. Your volume is well-managed.",
+      "Your volume is perfectly fine for a clear delivery."
+    ]
+  }
+}
