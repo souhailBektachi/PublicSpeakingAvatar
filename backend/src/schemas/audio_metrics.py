@@ -22,6 +22,7 @@ class FeedbackItem(BaseModel):
     severity: Literal["success", "info", "warning", "error"] = Field(
         ..., description="Severity level of the feedback"
     )
+    message_id: int = Field(0, description="Index of the message variant used")
 
 
 class VolumeFeedbackItem(FeedbackItem):

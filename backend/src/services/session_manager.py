@@ -2,6 +2,7 @@ from fastapi import WebSocket
 from typing import Dict, Optional
 import logging
 from src.services.audio_engine import AudioEngine
+from src.services.live_analyzer import LiveAnalyzer
 from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ class Session:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
         self.engine = AudioEngine() 
+        self.live_analyzer = LiveAnalyzer()
         self.transcript_history: list[str] = []
         self.metrics_history: list[AudioFeatures] = []
 
@@ -35,7 +37,7 @@ class SessionManager:
     def get_session(self, session_id: str) -> Optional[Session]:
         return self.active_sessions.get(session_id)
 
-    def store_results(
+    async def store_results(
         self,
         session_id: str,
         metrics: Optional[AudioFeatures],
@@ -44,8 +46,15 @@ class SessionManager:
         if session_id not in self.active_sessions:
             return
         session = self.active_sessions[session_id]
+        
         if metrics:
             session.metrics_history.append(metrics)
+            
+            # Run live analysis
+            feedback_audio = session.live_analyzer.analyze(metrics)
+            if feedback_audio:
+                await session.send_json(feedback_audio)
+                
         if transcript and transcript.text:
             session.transcript_history.append(transcript.text)
     
