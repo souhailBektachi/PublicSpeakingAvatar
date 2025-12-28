@@ -31,7 +31,7 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                     payload.audio_chunk
                 )
 
-                manager.store_results(session_id, prosody_metrics, transcript_segment)
+                await manager.store_results(session_id, prosody_metrics, transcript_segment)
 
                 if prosody_metrics or transcript_segment:
                     response = FeedbackResponse(
