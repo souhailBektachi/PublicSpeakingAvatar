@@ -50,7 +50,7 @@ class SessionManager:
         if metrics:
             session.metrics_history.append(metrics)
             
-        if transcript and transcript.text:
+        if transcript and transcript.text and getattr(transcript, "is_final", False):
             session.transcript_history.append(transcript.text)
     
     def get_recent_metrics(self , session_id: str , limit : int = 10) -> list[AudioFeatures]:
