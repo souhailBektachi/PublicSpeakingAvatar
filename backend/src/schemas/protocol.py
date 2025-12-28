@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Any
-from src.schemas.audio_metrics import AudioFeatures
+from typing import Optional
 
 
 
@@ -12,4 +11,4 @@ class StreamPayload(BaseModel):
 
 class FeedbackResponse(BaseModel):
     processed_at: float
-    metrics: AudioFeatures
+    audio: Optional[str] = None

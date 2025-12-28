@@ -50,11 +50,6 @@ class SessionManager:
         if metrics:
             session.metrics_history.append(metrics)
             
-            # Run live analysis
-            feedback_audio = session.live_analyzer.analyze(metrics)
-            if feedback_audio:
-                await session.send_json(feedback_audio)
-                
         if transcript and transcript.text:
             session.transcript_history.append(transcript.text)
     

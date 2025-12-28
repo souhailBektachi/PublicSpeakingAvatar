@@ -13,10 +13,11 @@ class ProsodyAnalyzer:
         self._buffer = np.array([], dtype=np.float32)
         self.processed_samples = 0
 
-        self.min_voiced_prob = 0.4
-        self.tonality_threshold = 0.6
-        self.stability_threshold_hz = 25.0
-        self.silence_threshold = 0.01
+        self.min_voiced_prob = 0.7
+        self.tonality_threshold = 0.8
+        self.stability_threshold_hz = 15.0
+        
+        self.silence_threshold = 0.03
         
         self.interpreter = ProsodyInterpreter()
 
@@ -41,8 +42,12 @@ class ProsodyAnalyzer:
         
         hop_length = int(self.target_sr * 0.05) 
         frame_rms = librosa.feature.rms(y=y, frame_length=hop_length*2, hop_length=hop_length)[0]
+        
         silent_frames = np.sum(frame_rms < self.silence_threshold)
-        silence_ratio = float(silent_frames * (hop_length / self.target_sr)) / (end_time - start_time)
+        total_frames = len(frame_rms)
+        duration = max(end_time - start_time, 1e-6)
+        
+        silence_ratio = float(silent_frames) / float(total_frames) if total_frames > 0 else 0.0
 
         sound = parselmouth.Sound(y, sampling_frequency=self.target_sr)
         pitch = sound.to_pitch(time_step=0.01, pitch_floor=75, pitch_ceiling=600)
@@ -66,13 +71,15 @@ class ProsodyAnalyzer:
 
         hesitation_val = 0.0
 
-        if silence_ratio > 0.66:
-             hesitation_val = (silence_ratio - 0.66) * 3.0
+        if silence_ratio > 0.7:
+             hesitation_val = (silence_ratio - 0.7) * 3.0
              hesitation_val = min(hesitation_val, 1.0)
+             
         elif (
             tonality > self.tonality_threshold
             and voiced_prob_val > self.min_voiced_prob
             and p_std < self.stability_threshold_hz
+            and p_std > 0
         ):
             stability_score = 1.0 - (p_std / self.stability_threshold_hz)
             hesitation_val = voiced_prob_val * stability_score

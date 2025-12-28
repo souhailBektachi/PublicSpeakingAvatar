@@ -27,19 +27,19 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                 payload = StreamPayload.model_validate_json(data)
                 
                 prosody_metrics, transcript_segment = await run_in_threadpool(
-                    session.engine.process_stream, 
-                    payload.audio_chunk
+                    session.engine.process_stream,
+                    payload.audio_chunk,
                 )
 
                 await manager.store_results(session_id, prosody_metrics, transcript_segment)
 
-                if prosody_metrics or transcript_segment:
-                    response = FeedbackResponse(
-                        processed_at=payload.timestamp,
-                        metrics=prosody_metrics,
-                        transcript=transcript_segment
-                    )
-                    await websocket.send_text(response.model_dump_json())
+
+                if prosody_metrics:
+                    feedback = session.live_analyzer.analyze(prosody_metrics)
+                    audio_b64 = feedback.get("audio") if feedback else None
+                    if audio_b64:
+                        response = FeedbackResponse(processed_at=payload.timestamp, audio=audio_b64)
+                        await websocket.send_text(response.model_dump_json())
 
             except ValidationError as e:
                 logger.error(f"Payload validation error: {e}")

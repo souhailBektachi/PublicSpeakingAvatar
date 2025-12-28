@@ -9,7 +9,7 @@ class ProsodyInterpreter:
     def __init__(self):
         self.male_pitch_range = (85, 180)
         self.female_pitch_range = (165, 255)
-        self.reference_rms = 0.1
+        self.reference_rms = 1.0
         self.messages = self._load_messages()
         
     def _load_messages(self) -> Dict:
@@ -138,7 +138,7 @@ class ProsodyInterpreter:
             )
     
     def _analyze_fluency(self, voiced_prob: float) -> FeedbackItem:
-        if voiced_prob < 0.5:
+        if voiced_prob < 0.35:
             status = "Pausing/Slow"
             msg, msg_id = self._get_message("fluency", status, "High pause frequency detected.")
             return FeedbackItem(
@@ -147,7 +147,7 @@ class ProsodyInterpreter:
                 severity="info",
                 message_id=msg_id
             )
-        elif voiced_prob <= 0.7:
+        elif voiced_prob <= 0.75:
             status = "Typical"
             msg, msg_id = self._get_message("fluency", status, "Balanced speech with natural pacing.")
             return FeedbackItem(
@@ -167,9 +167,9 @@ class ProsodyInterpreter:
             )
     
     def _analyze_hesitation(self, hesitation_rate: float, volume: float) -> FeedbackItem:
-        silence_threshold = 0.01
+        silence_threshold = 0.03
         
-        if hesitation_rate > 0.1 and volume > silence_threshold:
+        if hesitation_rate > 0.15 and volume > silence_threshold:
             status = "Detected"
             msg, msg_id = self._get_message("hesitation", status, "Filled pause detected (Um/Uh).")
             return FeedbackItem(
@@ -178,7 +178,7 @@ class ProsodyInterpreter:
                 severity="warning",
                 message_id=msg_id
             )
-        elif hesitation_rate > 0.0:
+        elif hesitation_rate > 0.05 and volume > silence_threshold:
             status = "Minor"
             msg, msg_id = self._get_message("hesitation", status, "Slight hesitation detected.")
             return FeedbackItem(
@@ -202,6 +202,96 @@ class ProsodyInterpreter:
             db_fs = -120.0
         else:
             db_fs = 20 * np.log10(rms / self.reference_rms)
+        
+        if db_fs < -45:
+            status = "Too Soft"
+            msg, msg_id = self._get_message("volume", status, "Your volume is a bit low.")
+            return VolumeFeedbackItem(
+                status=status,
+                message=msg,
+                severity="warning",
+                db_fs=db_fs,
+                message_id=msg_id
+            )
+        elif db_fs > -1.0:
+            status = "Clipping"
+            msg, msg_id = self._get_message("volume", status, "Your volume is too high.")
+            return VolumeFeedbackItem(
+                status=status,
+                message=msg,
+                severity="warning",
+                db_fs=db_fs,
+                message_id=msg_id
+            )
+        elif -25 <= db_fs <= -6:
+            status = "Optimal"
+            msg, msg_id = self._get_message("volume", status, "Excellent volume level.")
+            return VolumeFeedbackItem(
+                status=status,
+                message=msg,
+                severity="success",
+                db_fs=db_fs,
+                message_id=msg_id
+            )
+        else:
+            status = "Acceptable"
+            msg, msg_id = self._get_message("volume", status, "Your volume is at a good level.")
+            return VolumeFeedbackItem(
+                status=status,
+                message=msg,
+                severity="info",
+                db_fs=db_fs,
+                message_id=msg_id
+            )
+    
+    def _generate_suggestions(self, feedback: dict) -> List[str]:
+        suggestions = []
+        
+        if feedback["pitch_dynamics"].severity == "warning":
+            suggestions.append("Practice emphasizing keywords with pitch changes")
+        
+        if feedback["pitch_range"].severity == "warning":
+            suggestions.append("Adjust your vocal pitch to a more comfortable range")
+        
+        if feedback["hesitation"].status == "Detected":
+            suggestions.append("Replace 'um' and 'uh' with brief silent pauses")
+        
+        if feedback["volume"].severity == "warning":
+            if feedback["volume"].status == "Too Soft":
+                suggestions.append("Increase volume by projecting from your diaphragm")
+            else:
+                suggestions.append("Lower your volume to prevent audio clipping")
+        
+        if feedback["fluency"].status == "Fluent/Fast":
+            suggestions.append("Consider adding strategic pauses for emphasis")
+        
+        if not suggestions:
+            suggestions.append("Keep up the great work!")
+        
+        return suggestions
+    
+    def _calculate_score(self, feedback: dict) -> float:
+        score = 100.0
+        
+        if feedback["pitch_dynamics"].severity == "warning":
+            score -= 15
+        
+        if feedback["pitch_range"].severity == "warning":
+            score -= 10
+        
+        if feedback["hesitation"].status == "Detected":
+            score -= 20
+        elif feedback["hesitation"].status == "Minor":
+            score -= 5
+        
+        if feedback["volume"].severity == "warning":
+            score -= 15
+        
+        if feedback["fluency"].status == "Pausing/Slow":
+            score -= 5
+        
+        return max(0.0, score)
+
         
         if db_fs < -40:
             status = "Too Soft"
