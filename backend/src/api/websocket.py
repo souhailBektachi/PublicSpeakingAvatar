@@ -66,10 +66,15 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
     logger.info(f"Generating report ({len(session.transcript_history)} transcripts)...")
     report = await run_in_threadpool(session.generate_report)
     
+    logger.info(f"Report type: {type(report)}, TTS enabled: {session.tts.is_enabled()}")
+    
     items = report.get("session_report", []) if isinstance(report, dict) else report if isinstance(report, list) else []
+    logger.info(f"Found {len(items)} items for TTS")
+    
     for item in items:
         text = item.get("feedback", "")
         if text and session.tts.is_enabled():
+            logger.info(f"Generating TTS for: {item.get('issue', 'N/A')}")
             item["audio"] = await run_in_threadpool(session.tts.synthesize, text)
     
     await websocket.send_text(ReportResponse(report=report).model_dump_json())
