@@ -6,7 +6,6 @@ from src.schemas.audio_metrics import (
     WarningEvent,
 )
 
-
 class FeedbackSummarizer:
     def summarize(self, metrics_list: List[AudioFeatures]) -> FeedbackSummary:
         if not metrics_list:
@@ -161,19 +160,11 @@ class FeedbackSummarizer:
 
         sorted_chunks = sorted(chunks, key=lambda x: x["start_time"])
         merged = []
-        current = {
-            "start_time": sorted_chunks[0]["start_time"],
-            "end_time": sorted_chunks[0]["end_time"],
-            "message": sorted_chunks[0]["message"],
-            "pitch_means": [sorted_chunks[0]["pitch_mean"]],
-            "pitch_stds": [sorted_chunks[0]["pitch_std"]],
-            "voiced_probs": [sorted_chunks[0]["voiced_prob"]],
-            "volumes": [sorted_chunks[0]["volume"]],
-            "chunk_count": 1,
-        }
+        
+        current = self._init_accumulator(sorted_chunks[0])
 
         for chunk in sorted_chunks[1:]:
-            if chunk["start_time"] <= current["end_time"] + 0.5:
+            if chunk["start_time"] <= current["end_time"] + 0.1:
                 current["end_time"] = max(current["end_time"], chunk["end_time"])
                 current["pitch_means"].append(chunk["pitch_mean"])
                 current["pitch_stds"].append(chunk["pitch_std"])
@@ -182,19 +173,22 @@ class FeedbackSummarizer:
                 current["chunk_count"] += 1
             else:
                 merged.append(self._finalize_interval(current))
-                current = {
-                    "start_time": chunk["start_time"],
-                    "end_time": chunk["end_time"],
-                    "message": chunk["message"],
-                    "pitch_means": [chunk["pitch_mean"]],
-                    "pitch_stds": [chunk["pitch_std"]],
-                    "voiced_probs": [chunk["voiced_prob"]],
-                    "volumes": [chunk["volume"]],
-                    "chunk_count": 1,
-                }
+                current = self._init_accumulator(chunk)
 
         merged.append(self._finalize_interval(current))
         return merged
+
+    def _init_accumulator(self, chunk):
+        return {
+            "start_time": chunk["start_time"],
+            "end_time": chunk["end_time"],
+            "message": chunk["message"],
+            "pitch_means": [chunk["pitch_mean"]],
+            "pitch_stds": [chunk["pitch_std"]],
+            "voiced_probs": [chunk["voiced_prob"]],
+            "volumes": [chunk["volume"]],
+            "chunk_count": 1,
+        }
 
     def _finalize_interval(self, current: dict) -> dict:
         return {
