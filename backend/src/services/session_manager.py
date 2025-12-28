@@ -13,19 +13,24 @@ logger = logging.getLogger(__name__)
 
 
 class AudioCoordinator:
-    """Coordinates audio output from multiple sources to prevent spam."""
+    """Coordinates audio output with round-robin alternation between sources."""
     
     def __init__(self, cooldown: float = 5.0):
         self.cooldown = cooldown
         self.last_audio_time: float = 0.0
+        self.last_source: str = None  # Track who sent last for alternation
     
-    def can_send_audio(self) -> bool:
-        """Check if enough time has passed since last audio."""
-        return time.time() - self.last_audio_time >= self.cooldown
+    def can_send_audio(self, source: str) -> bool:
+        """Check if this source can send audio (cooldown + alternation)."""
+        time_ok = time.time() - self.last_audio_time >= self.cooldown
+        # Alternate: different source OR first time
+        turn_ok = self.last_source is None or self.last_source != source
+        return time_ok and turn_ok
     
-    def mark_audio_sent(self):
-        """Mark that an audio was just sent."""
+    def mark_audio_sent(self, source: str):
+        """Mark that an audio was just sent by this source."""
         self.last_audio_time = time.time()
+        self.last_source = source
     
     def time_until_available(self) -> float:
         """Returns seconds until next audio can be sent."""

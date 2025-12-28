@@ -1,9 +1,9 @@
-import os
 import base64
 import logging
 from typing import Optional
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
+from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +12,8 @@ class ElevenLabsSynthesizer:
     """Text-to-speech synthesizer using ElevenLabs API."""
 
     def __init__(self, api_key: Optional[str] = None, voice_id: Optional[str] = None):
-        self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
-        self.voice_id = voice_id or "pqHfZKP75CvOlQylNhV4"  # "Bill" - Older, Trustworthy, Mentor
+        self.api_key = api_key or settings.ELEVENLABS_API_KEY
+        self.voice_id = voice_id or settings.ELEVENLABS_VOICE_ID
 
         if not self.api_key:
             logger.warning("ElevenLabs API key not found")

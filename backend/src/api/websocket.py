@@ -15,43 +15,63 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def orchestrate_live_feedback(session: Session, transcript: TimestampsSegment, websocket: WebSocket):
-    """Generate LLM feedback with TTS and send to client."""
-    user_msg = f"User said: \"{transcript.text}\""
-    session.llm_context.append({"role": "user", "content": user_msg})
+async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, emotion: str = None, source: str = "unknown"):
+    """Send audio feedback if coordinator allows. Returns True if sent."""
+    if not audio or not session.audio_coordinator.can_send_audio(source):
+        return False
     
-    current_time = time.time()
-    if current_time - session.last_feedback_time < 10.0:
-        logger.info(f"Skipping LLM (Cooldown): {10.0 - (current_time - session.last_feedback_time):.1f}s")
-        return
+    response = FeedbackResponse(audio=audio, emotion=emotion)
+    await websocket.send_text(response.model_dump_json(exclude_none=True))
+    session.audio_coordinator.mark_audio_sent(source)
+    logger.info(f"Audio sent ({source})")
+    return True
 
-    session.last_feedback_time = current_time
-    logger.info("Triggering LLM Coach...")
+
+async def handle_live_analyzer(session: Session, websocket: WebSocket, prosody):
+    """Analyze prosody and send audio feedback if needed."""
+    if not prosody:
+        return
     
-    full_text = ""
-    emotion = None
+    feedback = session.live_analyzer.analyze(prosody)
+    audio = feedback.get("audio") if feedback else None
+    await send_audio_feedback(session, websocket, audio, source="LiveAnalyzer")
+
+
+async def handle_llm_feedback(session: Session, websocket: WebSocket, transcript: TimestampsSegment):
+    """Generate LLM feedback with TTS and send to client."""
+    session.llm_context.append({"role": "user", "content": f'User said: "{transcript.text}"'})
+    
+    # 10-second cooldown between LLM calls
+    if time.time() - session.last_feedback_time < 10.0:
+        return
+    session.last_feedback_time = time.time()
+    
+    logger.info("LLM Coach triggered...")
+    
+    # Buffer LLM response
+    full_text, emotion = "", None
     for chunk, e in session.llm_coach.generate_live_feedback(session.llm_context):
         if e:
             emotion = e
         full_text += chunk
 
+    logger.info(f"LLM buffered text: '{full_text}' [{emotion}]")
+
+    # Generate TTS if coordinator allows
     audio = None
-    if full_text.strip() and session.tts.is_enabled() and session.audio_coordinator.can_send_audio():
-        logger.info(f"Generating TTS: '{full_text}'")
+    if full_text.strip() and session.tts.is_enabled() and session.audio_coordinator.can_send_audio("LLM"):
+        logger.info(f"Generating TTS for: '{full_text}'")
         audio = await run_in_threadpool(session.tts.synthesize, full_text)
-        if audio:
-            session.audio_coordinator.mark_audio_sent()
-
-    response = FeedbackResponse(emotion=emotion, audio=audio)
-    await websocket.send_text(response.model_dump_json(exclude_none=True))
-    logger.info(f"Sent: [{emotion}] (audio: {'yes' if audio else 'no'})")
-
+    
+    await send_audio_feedback(session, websocket, audio, emotion, source="LLM")
+    
+    # Store in history
     stored = f"[{emotion}] {full_text}" if emotion else full_text
     session.llm_context.append({"role": "assistant", "content": stored})
 
 
 async def generate_and_send_report(session: Session, websocket: WebSocket):
-    """Generate final report with TTS audio for each item."""
+    """Generate final report with TTS for each item."""
     logger.info("Flushing transcriber...")
     pending = await run_in_threadpool(session.engine.flush_transcriber, 5.0)
     
@@ -66,16 +86,36 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
     logger.info(f"Generating report ({len(session.transcript_history)} transcripts)...")
     report = await run_in_threadpool(session.generate_report)
     
-    logger.info(f"Report type: {type(report)}, TTS enabled: {session.tts.is_enabled()}")
+    # Debug: Log report structure
+    logger.info(f"TTS enabled: {session.tts.is_enabled()}")
+    logger.info(f"Report type: {type(report).__name__}")
+    if isinstance(report, dict):
+        logger.info(f"Report keys: {list(report.keys())}")
     
-    items = report.get("session_report", []) if isinstance(report, dict) else report if isinstance(report, list) else []
+    # Find items - handle different report structures
+    if isinstance(report, dict):
+        # Try common keys
+        items = report.get("session_report") or report.get("report") or report.get("feedback") or []
+        if not items and len(report) == 1:
+            # If dict has single key, use its value
+            items = list(report.values())[0] if isinstance(list(report.values())[0], list) else []
+    elif isinstance(report, list):
+        items = report
+    else:
+        items = []
+    
     logger.info(f"Found {len(items)} items for TTS")
     
-    for item in items:
+    for i, item in enumerate(items):
         text = item.get("feedback", "")
         if text and session.tts.is_enabled():
-            logger.info(f"Generating TTS for: {item.get('issue', 'N/A')}")
-            item["audio"] = await run_in_threadpool(session.tts.synthesize, text)
+            logger.info(f"Generating TTS for item {i+1}: {item.get('issue', 'N/A')[:30]}")
+            audio = await run_in_threadpool(session.tts.synthesize, text)
+            if audio:
+                item["audio"] = audio
+                logger.info(f"TTS generated for item {i+1}")
+            else:
+                logger.warning(f"TTS failed for item {i+1}")
     
     await websocket.send_text(ReportResponse(report=report).model_dump_json())
     logger.info("Report sent")
@@ -112,26 +152,22 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                     )
                     await manager.store_results(session_id, prosody, transcript)
 
-                    if prosody:
-                        feedback = session.live_analyzer.analyze(prosody)
-                        audio = feedback.get("audio") if feedback else None
-                        if audio and session.audio_coordinator.can_send_audio():
-                            await websocket.send_text(FeedbackResponse(audio=audio).model_dump_json(exclude_none=True))
-                            session.audio_coordinator.mark_audio_sent()
-                            logger.info("LiveAnalyzer audio sent")
-
+                    # Handle feedback (LiveAnalyzer first, then LLM)
+                    await handle_live_analyzer(session, websocket, prosody)
+                    
                     if transcript and transcript.text and getattr(transcript, "is_final", False):
                         logger.info(f"Transcript: '{transcript.text}'")
-                        await orchestrate_live_feedback(session, transcript, websocket)
+                        await handle_llm_feedback(session, websocket, transcript)
 
                 except ValidationError as e:
                     logger.error(f"Validation error: {e}")
 
+            # Check for async transcripts
             extra = session.engine.get_transcript()
             if extra and extra.text and getattr(extra, "is_final", False):
                 logger.info(f"Async transcript: '{extra.text}'")
                 await manager.store_results(session_id, None, extra)
-                await orchestrate_live_feedback(session, extra, websocket)
+                await handle_llm_feedback(session, websocket, extra)
 
     except WebSocketDisconnect:
         logger.info("Disconnected")
