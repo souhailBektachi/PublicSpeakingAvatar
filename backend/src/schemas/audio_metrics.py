@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
 
 
 class TimeInterval(BaseModel):
@@ -52,3 +52,28 @@ class AudioFeatures(TimeInterval):
     volume: float = Field(..., description="RMS Energy (Loudness)")
     
     feedback: Optional[ProsodyFeedback] = Field(None, description="Interpreted coaching feedback")
+
+class SummarizedInterval(TimeInterval):
+    status: str
+    message: str
+    avg_pitch_mean: float
+    avg_pitch_std: float
+    avg_voiced_prob: float
+    avg_volume: float
+    chunk_count: int
+
+class WarningEvent(BaseModel):
+    timestamp: float
+    category: str
+    status: str
+    message: str
+    db_fs: Optional[float] = None
+
+class FeedbackSummary(BaseModel):
+    total_duration: float
+    chunk_count: int
+    overall_score: float
+    success_intervals: List[SummarizedInterval] = []
+    info_intervals: List[SummarizedInterval] = []
+    warnings: List[WarningEvent] = []
+    suggestions: List[str] = []

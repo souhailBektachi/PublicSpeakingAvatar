@@ -77,10 +77,19 @@ class LiveAnalyzer:
             return None
             
         safe_category = category.lower()
+        # Try with underscores first (e.g. Fluent_Fast)
         safe_status = status.replace("/", "_").replace(" ", "_")
         
         filename = f"{safe_category}_{safe_status}_{message_id}.mp3"
         audio_path = self.audio_base_path / filename
+        
+        # Fallback: Try removing spaces (e.g. TooSoft)
+        if not audio_path.exists():
+            safe_status_nospace = status.replace("/", "_").replace(" ", "")
+            filename_nospace = f"{safe_category}_{safe_status_nospace}_{message_id}.mp3"
+            if (self.audio_base_path / filename_nospace).exists():
+                audio_path = self.audio_base_path / filename_nospace
+                safe_status = safe_status_nospace # Update for pattern matching below
         
         if not audio_path.exists():
             try:

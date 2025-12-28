@@ -39,6 +39,10 @@ class AudioEngine:
     def get_transcript(self) -> Optional[TimestampsSegment]:
         return self.transcriber.get_result()
 
+    def flush_transcriber(self, timeout: float = 5.0):
+        """Flush pending transcripts from the transcriber."""
+        return self.transcriber.flush(timeout)
+
     def shutdown(self):
         self.transcriber.stop()
 
