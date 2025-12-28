@@ -13,7 +13,7 @@ class ElevenLabsSynthesizer:
 
     def __init__(self, api_key: Optional[str] = None, voice_id: Optional[str] = None):
         self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
-        self.voice_id = voice_id or "21m00Tcm4TlvDq8ikWAM"  # Default voice
+        self.voice_id = voice_id or "pqHfZKP75CvOlQylNhV4"  # "Bill" - Older, Trustworthy, Mentor
 
         if not self.api_key:
             logger.warning("ElevenLabs API key not found")

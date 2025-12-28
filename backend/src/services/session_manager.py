@@ -1,13 +1,37 @@
 from fastapi import WebSocket
 from typing import Dict, Optional, List, Generator, Tuple
 import logging
+import time
 from src.services.audio_engine import AudioEngine
 from src.services.live_analyzer import LiveAnalyzer
 from src.services.llm_coach import LLMCoach
 from src.services.analyzers.summarizer import FeedbackSummarizer
+from src.services.synthesizers.elevenlabs import ElevenLabsSynthesizer
 from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 
 logger = logging.getLogger(__name__)
+
+
+class AudioCoordinator:
+    """Coordinates audio output from multiple sources to prevent spam."""
+    
+    def __init__(self, cooldown: float = 5.0):
+        self.cooldown = cooldown
+        self.last_audio_time: float = 0.0
+    
+    def can_send_audio(self) -> bool:
+        """Check if enough time has passed since last audio."""
+        return time.time() - self.last_audio_time >= self.cooldown
+    
+    def mark_audio_sent(self):
+        """Mark that an audio was just sent."""
+        self.last_audio_time = time.time()
+    
+    def time_until_available(self) -> float:
+        """Returns seconds until next audio can be sent."""
+        remaining = self.cooldown - (time.time() - self.last_audio_time)
+        return max(0.0, remaining)
+
 
 class Session:
     def __init__(self, websocket: WebSocket):
@@ -16,6 +40,8 @@ class Session:
         self.live_analyzer = LiveAnalyzer()
         self.llm_coach = LLMCoach()
         self.summarizer = FeedbackSummarizer()
+        self.tts = ElevenLabsSynthesizer()
+        self.audio_coordinator = AudioCoordinator(cooldown=5.0)
         
         # State
         self.transcript_history: List[TimestampsSegment] = []
@@ -27,19 +53,24 @@ class Session:
             {
                 "role": "system", 
                 "content": (
-                    "You are a charismatic Public Speaking Coach giving live feedback. "
+                    "You are a seasoned Public Speaking Coach giving live, meaningful feedback. "
                     "RULES:\n"
-                    "1. Output EXACTLY this format: [Emotion] Your message\n"
-                    "2. Keep messages SHORT (1-5 words max)\n"
-                    "3. Focus on ENCOURAGING the speaker\n"
-                    "4. DO NOT explain, analyze, or describe what they said\n"
-                    "5. DO NOT start with 'Okay', 'So', 'The user'\n"
-                    "6. Emotions: Excited, Curious, Impressed, Encouraging, Supportive\n\n"
-                    "Examples:\n"
-                    "[Excited] Great analogy!\n"
-                    "[Impressed] Powerful opening!\n"
-                    "[Curious] Tell me more!\n"
-                    "[Encouraging] Keep going!"
+                    "1. Format: [Emotion] Your feedback\n"
+                    "2. Keep it SHORT (3-8 words)\n"
+                    "3. Give SPECIFIC, ACTIONABLE praise or tips\n"
+                    "4. Reference what they ACTUALLY said\n"
+                    "5. NO generic phrases like 'Tell me more', 'Keep going', 'Great job'\n"
+                    "6. Emotions: Impressed, Encouraging, Insightful, Confident, Supportive\n\n"
+                    "Good Examples:\n"
+                    "[Impressed] Vivid rocket analogy!\n"
+                    "[Encouraging] Strong statistic, cite the source!\n"
+                    "[Confident] Your pace is perfect here.\n"
+                    "[Insightful] That comparison lands well.\n"
+                    "[Supportive] Pause after that point.\n\n"
+                    "Bad Examples (NEVER use):\n"
+                    "- 'Tell me more' (vague)\n"
+                    "- 'Great point' (generic)\n"
+                    "- 'Keep going' (empty)"
                 )
             }
         ]

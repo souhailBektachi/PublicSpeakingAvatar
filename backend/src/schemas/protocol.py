@@ -12,12 +12,12 @@ class EndSessionPayload(BaseModel):
 
 
 class FeedbackResponse(BaseModel):
-    processed_at: float
+    processed_at: Optional[float] = None
     audio: Optional[str] = None
     text: Optional[str] = None
     emotion: Optional[str] = None
 
-
+ 
 class ReportResponse(BaseModel):
     type: Literal["final_report"] = "final_report"
     report: Union[dict, list]
