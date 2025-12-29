@@ -15,7 +15,6 @@ soundfile = "*"
 numpy = "*"
 librosa = "*"
 pydantic = "*"
-assemblyai = "*"
 pydantic-settings = "*"
 python-dotenv = "^1.2.1"
 fastapi = "*"
@@ -24,6 +23,9 @@ websockets = "*"
 elevenlabs = "^2.27.0"
 praat-parselmouth = "*"
 groq = "*"
+onnxruntime-gpu = "*"
+numba = "*"
+pyyaml = "*"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
