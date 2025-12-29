@@ -144,7 +144,8 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                     if raw.get("type") == "end_session":
                         logger.info("End session requested")
                         await generate_and_send_report(session, websocket)
-                        break
+                        session.reset()
+                        continue
                     if raw.get("type") == "telemetry":
                         telemetry = TelemetryPayload.model_validate(raw)
                         session.latest_pose = telemetry.pose_data

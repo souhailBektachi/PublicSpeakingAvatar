@@ -11,6 +11,27 @@ from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 
 logger = logging.getLogger(__name__)
 
+SYSTEM_PROMPT = (
+    "You are a seasoned Public Speaking Coach giving live, meaningful feedback. "
+    "RULES:\n"
+    "1. Format: [Emotion] Your feedback\n"
+    "2. Keep it SHORT (3-8 words)\n"
+    "3. Give SPECIFIC, ACTIONABLE praise or tips\n"
+    "4. Reference what they ACTUALLY said\n"
+    "5. NO generic phrases like 'Tell me more', 'Keep going', 'Great job'\n"
+    "6. Emotions: Impressed, Encouraging, Insightful, Confident, Supportive\n\n"
+    "Good Examples:\n"
+    "[Impressed] Vivid rocket analogy!\n"
+    "[Encouraging] Strong statistic, cite the source!\n"
+    "[Confident] Your pace is perfect here.\n"
+    "[Insightful] That comparison lands well.\n"
+    "[Supportive] Pause after that point.\n\n"
+    "Bad Examples (NEVER use):\n"
+    "- 'Tell me more' (vague)\n"
+    "- 'Great point' (generic)\n"
+    "- 'Keep going' (empty)"
+)
+
 
 class AudioCoordinator:
     """Coordinates audio output with round-robin alternation between sources."""
@@ -52,38 +73,27 @@ class Session:
         self.transcript_history: List[TimestampsSegment] = []
         self.metrics_history: List[AudioFeatures] = []
         self.last_feedback_time: float = 0.0
-        
-        self.last_feedback_time: float = 0.0
         self.last_telemetry_time: float = time.time()
         self.last_speech_end_time: float = 0.0
         self.silence_alert_sent: bool = False
         self.latest_pose: dict = {}
-        
         self.llm_context: List[Dict[str, str]] = [
-            {
-                "role": "system", 
-                "content": (
-                    "You are a seasoned Public Speaking Coach giving live, meaningful feedback. "
-                    "RULES:\n"
-                    "1. Format: [Emotion] Your feedback\n"
-                    "2. Keep it SHORT (3-8 words)\n"
-                    "3. Give SPECIFIC, ACTIONABLE praise or tips\n"
-                    "4. Reference what they ACTUALLY said\n"
-                    "5. NO generic phrases like 'Tell me more', 'Keep going', 'Great job'\n"
-                    "6. Emotions: Impressed, Encouraging, Insightful, Confident, Supportive\n\n"
-                    "Good Examples:\n"
-                    "[Impressed] Vivid rocket analogy!\n"
-                    "[Encouraging] Strong statistic, cite the source!\n"
-                    "[Confident] Your pace is perfect here.\n"
-                    "[Insightful] That comparison lands well.\n"
-                    "[Supportive] Pause after that point.\n\n"
-                    "Bad Examples (NEVER use):\n"
-                    "- 'Tell me more' (vague)\n"
-                    "- 'Great point' (generic)\n"
-                    "- 'Keep going' (empty)"
-                )
-            }
+            {"role": "system", "content": SYSTEM_PROMPT}
         ]
+
+    def reset(self):
+        """Reset session state for a new recording while keeping WebSocket alive."""
+        self.engine.shutdown() # Stop transcribers
+        self.engine = AudioEngine()
+        self.transcript_history = []
+        self.metrics_history = []
+        self.last_feedback_time = 0.0
+        self.last_speech_end_time = 0.0
+        self.silence_alert_sent = False
+        self.llm_context = [
+            {"role": "system", "content": SYSTEM_PROMPT}
+        ]
+        logger.info("Session state reset (WebSocket remains open)")
 
     async def send_json(self, data: dict):
         await self.websocket.send_json(data)

@@ -12,7 +12,3 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 settings = Settings()
-
-print(f"[CONFIG] ELEVENLABS_API_KEY loaded: {bool(settings.ELEVENLABS_API_KEY)} (Length: {len(settings.ELEVENLABS_API_KEY)})")
-if settings.ELEVENLABS_API_KEY:
-    print(f"[CONFIG] Key starts with: {settings.ELEVENLABS_API_KEY[:4]}...")
