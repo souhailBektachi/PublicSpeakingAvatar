@@ -19,7 +19,7 @@ class AudioEngine:
         self.transcriber = Transcriber(sample_rate=self.target_sr)
         self._chunk_count = 0
 
-    def process_stream(self, base64_chunk: str) -> Tuple[Optional[AudioFeatures], Optional[TimestampsSegment]]:
+    def process_stream(self, base64_chunk: str, timestamp: float = None) -> Tuple[Optional[AudioFeatures], Optional[TimestampsSegment]]:
         new_audio = self._decode_chunk(base64_chunk)
         self._chunk_count += 1
         
@@ -29,10 +29,10 @@ class AudioEngine:
         
         if self._chunk_count % 10 == 1:
             rms = np.sqrt(np.mean(new_audio**2)) if len(new_audio) > 0 else 0
-            logger.debug(f"Chunk #{self._chunk_count}: len={len(new_audio)}, rms={rms:.4f}")
+            logger.debug(f"Chunk #{self._chunk_count}: len={len(new_audio)}, rms={rms:.4f}, time={timestamp}")
         
-        prosody_metrics = self.prosody.process(new_audio)
-        transcript_segment = self.transcriber.process(new_audio)
+        prosody_metrics = self.prosody.process(new_audio, timestamp=timestamp)
+        transcript_segment = self.transcriber.process(new_audio, timestamp=timestamp)
 
         return prosody_metrics, transcript_segment
 

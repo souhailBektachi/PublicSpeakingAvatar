@@ -7,7 +7,7 @@ import asyncio
 import time
 import json
 
-from src.schemas.protocol import StreamPayload, FeedbackResponse, ReportResponse
+from src.schemas.protocol import StreamPayload, FeedbackResponse, ReportResponse, TelemetryPayload
 from src.services.session_manager import manager, Session
 from src.schemas.audio_metrics import TimestampsSegment
 
@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, emotion: str = None, source: str = "unknown"):
+async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, sentiment: str = None, source: str = "unknown"):
     """Send audio feedback if coordinator allows. Returns True if sent."""
     if not audio or not session.audio_coordinator.can_send_audio(source):
         return False
     
-    response = FeedbackResponse(audio=audio, emotion=emotion)
+    response = FeedbackResponse(audio=audio, sentiment=sentiment)
     await websocket.send_text(response.model_dump_json(exclude_none=True))
     session.audio_coordinator.mark_audio_sent(source)
     logger.info(f"Audio sent ({source})")
@@ -145,10 +145,37 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                         logger.info("End session requested")
                         await generate_and_send_report(session, websocket)
                         break
-                    
+                    if raw.get("type") == "telemetry":
+                        telemetry = TelemetryPayload.model_validate(raw)
+                        session.latest_pose = telemetry.pose_data
+                        session.last_telemetry_time = telemetry.timestamp
+                        
+                        if telemetry.is_speaking:
+                            session.last_speech_end_time = telemetry.timestamp
+                            session.silence_alert_sent = False
+                        else:
+                            silence_duration = telemetry.timestamp - session.last_speech_end_time
+                            if silence_duration > 1.0:
+                                logger.info(f"Silence duration: {silence_duration:.1f}s")
+                            
+                            if silence_duration > 8.0 and not session.silence_alert_sent:
+                                session.silence_alert_sent = True
+                                logger.info(f"Silence alert triggered at {telemetry.timestamp}s")
+                                response = FeedbackResponse(
+                                    type="feedback",
+                                    feedback="You have been silent for a while. Take a deep breath and continue.",
+                                    sentiment="neutral",
+                                    timestamp=telemetry.timestamp
+                                )
+                                await websocket.send_text(response.model_dump_json(exclude_none=True))
+                        
+                        continue
+
                     payload = StreamPayload.model_validate(raw)
                     prosody, transcript = await run_in_threadpool(
-                        session.engine.process_stream, payload.audio_chunk
+                        session.engine.process_stream, 
+                        payload.audio_chunk,
+                        timestamp=payload.timestamp
                     )
                     await manager.store_results(session_id, prosody, transcript)
 

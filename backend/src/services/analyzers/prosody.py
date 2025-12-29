@@ -21,15 +21,24 @@ class ProsodyAnalyzer:
         
         self.interpreter = ProsodyInterpreter()
 
-    def process(self, new_chunk: np.ndarray) -> Optional[AudioFeatures]:
+    def process(self, new_chunk: np.ndarray, timestamp: float = None) -> Optional[AudioFeatures]:
         self._buffer = np.concatenate((self._buffer, new_chunk))
         self.processed_samples += len(new_chunk)
 
         if (len(self._buffer) / self.target_sr) < self.window_size:
             return None
 
-        window_start = (self.processed_samples - len(self._buffer)) / self.target_sr
-        window_end = self.processed_samples / self.target_sr
+        # Calculate window timing based on provided timestamp (start of new_chunk) or internal counter
+        chunk_duration = len(new_chunk) / self.target_sr
+        
+        if timestamp is not None:
+            # If timestamp is provided, it marks the start of new_chunk.
+            # window_end is the end of new_chunk.
+            window_end = timestamp + chunk_duration
+        else:
+            window_end = self.processed_samples / self.target_sr
+            
+        window_start = window_end - (len(self._buffer) / self.target_sr)
         metrics = self._analyze(self._buffer, window_start, window_end)
 
         overlap_samples = int(self.overlap_duration * self.target_sr)

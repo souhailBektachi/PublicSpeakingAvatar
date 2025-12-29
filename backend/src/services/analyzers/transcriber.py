@@ -23,7 +23,7 @@ class Transcriber:
             logger.warning("Transcription will be disabled.")
             self._enabled = False
 
-    def process(self, new_chunk: np.ndarray) -> Optional[TimestampsSegment]:
+    def process(self, new_chunk: np.ndarray, timestamp: float = None) -> Optional[TimestampsSegment]:
         """
         Process a new audio chunk (float32 numpy array).
         Since the frontend sends 'thoughts' (complete sentences), 
@@ -34,7 +34,12 @@ class Transcriber:
         
         # Calculate timing
         duration = len(new_chunk) / self.sample_rate
-        start_time = self.processed_samples / self.sample_rate
+        
+        if timestamp is not None:
+            start_time = timestamp
+        else:
+            start_time = self.processed_samples / self.sample_rate
+            
         end_time = start_time + duration
         self.processed_samples += len(new_chunk)
         

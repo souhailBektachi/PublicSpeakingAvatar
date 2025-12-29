@@ -53,7 +53,12 @@ class Session:
         self.metrics_history: List[AudioFeatures] = []
         self.last_feedback_time: float = 0.0
         
-        # LLM Context (Conversation History)
+        self.last_feedback_time: float = 0.0
+        self.last_telemetry_time: float = time.time()
+        self.last_speech_end_time: float = 0.0
+        self.silence_alert_sent: bool = False
+        self.latest_pose: dict = {}
+        
         self.llm_context: List[Dict[str, str]] = [
             {
                 "role": "system", 
