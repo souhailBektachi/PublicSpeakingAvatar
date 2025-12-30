@@ -11,6 +11,58 @@ from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 
 logger = logging.getLogger(__name__)
 
+
+class LiveWPMCalculator:
+    """Tracks word count over time to calculate WPM with a dynamic window."""
+    def __init__(self, window_size: float = 30.0):
+        self.window_size = window_size
+        self.word_timestamps: List[Tuple[float, int]] = [] # (timestamp, word_count)
+        self.start_time = 0.0
+
+    def add_transcript(self, transcript: TimestampsSegment):
+        """Add a finalized transcript segment."""
+        if not transcript.text.strip():
+            return
+            
+        word_count = len(transcript.text.split())
+        end_time = transcript.end_time
+        
+        if self.start_time == 0.0:
+            self.start_time = transcript.start_time
+            
+        self.word_timestamps.append((end_time, word_count))
+        
+        # Cleanup old data (> window size)
+        latest_time = self.word_timestamps[-1][0]
+        self.word_timestamps = [
+            (t, c) for t, c in self.word_timestamps 
+            if t > latest_time - self.window_size
+        ]
+
+    def get_wpm(self) -> float:
+        """Calculate current WPM based on available data."""
+        if not self.word_timestamps:
+            return 0.0
+            
+        latest_time = self.word_timestamps[-1][0]
+        duration = latest_time - self.start_time
+        
+        # Scenario 1: Too early (< 5s)
+        if duration < 5.0:
+            return 0.0
+            
+        # Scenario 2: Startup phase (5s - 30s)
+        # Use simple average over entire duration so far
+        if duration < self.window_size:
+            total_words = sum(c for _, c in self.word_timestamps)
+            return (total_words / duration) * 60.0
+            
+        # Scenario 3: Stable phase (> 30s)
+        # Use sum of words in current window
+        # Note: Since we purge old data, sum(all in list) IS the window sum
+        total_words_in_window = sum(c for _, c in self.word_timestamps)
+        return (total_words_in_window / self.window_size) * 60.0
+
 SYSTEM_PROMPT = (
     "You are a seasoned Public Speaking Coach giving live, meaningful feedback. "
     "RULES:\n"
@@ -68,6 +120,7 @@ class Session:
         self.summarizer = FeedbackSummarizer()
         self.tts = KokoroSynthesizer()
         self.audio_coordinator = AudioCoordinator(cooldown=5.0)
+        self.wpm_calculator = LiveWPMCalculator()
         
         # State
         self.transcript_history: List[TimestampsSegment] = []
@@ -90,6 +143,7 @@ class Session:
         self.last_feedback_time = 0.0
         self.last_speech_end_time = 0.0
         self.silence_alert_sent = False
+        self.wpm_calculator = LiveWPMCalculator()
         self.llm_context = [
             {"role": "system", "content": SYSTEM_PROMPT}
         ]
@@ -97,6 +151,11 @@ class Session:
 
     async def send_json(self, data: dict):
         await self.websocket.send_json(data)
+
+    def update_wpm(self, transcript: TimestampsSegment) -> float:
+        """Update WPM calculator and return current value."""
+        self.wpm_calculator.add_transcript(transcript)
+        return self.wpm_calculator.get_wpm()
 
     async def generate_report(self) -> dict:
         """

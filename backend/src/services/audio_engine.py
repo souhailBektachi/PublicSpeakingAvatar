@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 from src.services.analyzers.prosody import ProsodyAnalyzer
 from src.services.analyzers.transcriber import Transcriber
+from src.services.analyzers.realtime_metrics import RealtimeAnalyzer, RealtimeMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class AudioEngine:
         self.processed_samples = 0
         self.prosody = ProsodyAnalyzer(sample_rate=self.target_sr)
         self.transcriber = Transcriber(sample_rate=self.target_sr)
+        self.realtime = RealtimeAnalyzer(sample_rate=self.target_sr)  # NEW
         self._chunk_count = 0
 
     def process_stream(self, base64_chunk: str, timestamp: float = None) -> Tuple[Optional[AudioFeatures], Optional[TimestampsSegment]]:
@@ -35,6 +37,13 @@ class AudioEngine:
         transcript_segment = self.transcriber.process(new_audio, timestamp=timestamp)
 
         return prosody_metrics, transcript_segment
+
+    def get_realtime_metrics(self, base64_chunk: str) -> Optional[RealtimeMetrics]:
+        """Fast metrics on every chunk (no buffering)."""
+        audio = self._decode_chunk(base64_chunk)
+        if len(audio) == 0:
+            return None
+        return self.realtime.analyze(audio)
 
     def get_transcript(self) -> Optional[TimestampsSegment]:
         return self.transcriber.get_result()

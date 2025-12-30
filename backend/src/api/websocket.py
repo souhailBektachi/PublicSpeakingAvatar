@@ -23,23 +23,33 @@ def _summary_to_text(summary: dict) -> str:
     position = summary.get("position", {})
 
     open_posture = posture.get("open", True)
+    head = posture.get("head", {})
     parts = [
         f"Posture={'open' if open_posture else 'closed'}",
-        f"Arms(left_raised={arms.get('left_raised', False)},right_raised={arms.get('right_raised', False)},elbows={arms.get('elbows','neutral')},hands={arms.get('hands','apart')},crossed={arms.get('crossed', False)})",
+        f"Arms(left_raised={arms.get('left_raised', False)},right_raised={arms.get('right_raised', False)},elbows={arms.get('elbows','neutral')},hands={arms.get('hands','apart')},crossed={arms.get('crossed', False)},hand_near_face={arms.get('hand_near_face', False)})",
+        f"Head(is_reading={head.get('is_reading_script', False)},looking_at={head.get('looking_at', 'unknown')})",
         f"Behavior(gestures={behavior.get('gestures','medium')},facial_expression={behavior.get('facial_expression','medium')},facial_energy={behavior.get('facial_energy','medium')},movement={behavior.get('movement','static')})",
         f"Position(horizontal={position.get('horizontal','center')},depth={position.get('depth','middle')})",
     ]
     return "; ".join(parts)
 
-async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, visemes: dict = None, sentiment: str = None, source: str = "unknown"):
-    """Send audio feedback with optional visemes if coordinator allows. Returns True if sent."""
-    if not audio or not session.audio_coordinator.can_send_audio(source):
-        return False
+async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str = None, visemes: dict = None, sentiment: str = None, feedback: str = None, source: str = "unknown"):
+    """Send feedback (audio or visual). Returns True if sent."""
+    # Allow if audio is present AND allowed, OR if just text feedback is present
+    audio_allowed = audio and session.audio_coordinator.can_send_audio(source)
     
-    response = FeedbackResponse(audio=audio, visemes=visemes, sentiment=sentiment)
+    if not audio_allowed and not feedback:
+        return False
+        
+    final_audio = audio if audio_allowed else None
+    
+    response = FeedbackResponse(audio=final_audio, visemes=visemes, sentiment=sentiment, feedback=feedback)
     await websocket.send_text(response.model_dump_json(exclude_none=True))
-    session.audio_coordinator.mark_audio_sent(source)
-    logger.info(f"Audio sent ({source}), visemes: {visemes is not None}")
+    
+    if final_audio:
+        session.audio_coordinator.mark_audio_sent(source)
+        
+    logger.info(f"Feedback sent ({source}): Audio={bool(final_audio)}, Text={bool(feedback)}")
     return True
 
 
@@ -48,9 +58,23 @@ async def handle_live_analyzer(session: Session, websocket: WebSocket, prosody):
     if not prosody:
         return
     
-    feedback = session.live_analyzer.analyze(prosody)
-    audio = feedback.get("audio") if feedback else None
-    await send_audio_feedback(session, websocket, audio, visemes=None, source="LiveAnalyzer")
+    feedback_data = session.live_analyzer.analyze(prosody)
+    if feedback_data:
+        # VISUAL ONLY MODE: We suppress audio but send the text
+        message = feedback_data.get("message")
+        # Default sentiment for these heuristics is usually warning/info
+        category = feedback_data.get("category", "")
+        sentiment = "warning" if "volume" in category or "hesitation" in category else "neutral"
+        
+        await send_audio_feedback(
+            session, 
+            websocket, 
+            audio=None, # DISABLE AUDIO INTERRUPTIONS
+            visemes=None, 
+            sentiment=sentiment, 
+            feedback=message,
+            source="LiveAnalyzer"
+        )
 
 
 async def handle_llm_feedback(session: Session, websocket: WebSocket, transcript: TimestampsSegment):
@@ -199,6 +223,37 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                         await generate_and_send_report(session, websocket)
                         session.reset()
                         continue
+                    
+                    # FAST PATH: Realtime audio for instant metrics
+                    if raw.get("type") == "realtime_audio":
+                        audio_chunk = raw.get("audio_chunk")
+                        timestamp = raw.get("timestamp", 0)
+                        if audio_chunk:
+                            # logger.debug(f"Received realtime_audio chunk len={len(audio_chunk)}")
+                            rt_metrics = await run_in_threadpool(
+                                session.engine.get_realtime_metrics,
+                                audio_chunk
+                            )
+                            if rt_metrics:
+                                if rt_metrics.is_voiced:
+                                    logger.debug(f"RT Metrics sent: Pitch={rt_metrics.pitch:.1f}, Vol={rt_metrics.volume:.4f}")
+                                    await websocket.send_text(json.dumps({
+                                        "type": "metrics_update",
+                                        "timestamp": timestamp,
+                                        "pitch": round(rt_metrics.pitch, 2),
+                                        "volume": round(rt_metrics.volume, 4)
+                                    }))
+                                else:
+                                    # Send unvoiced packets too so chart updates (with pitch=0 or just volume)
+                                    # Otherwise chart freezes!
+                                    await websocket.send_text(json.dumps({
+                                        "type": "metrics_update",
+                                        "timestamp": timestamp,
+                                        "pitch": 0,
+                                        "volume": round(rt_metrics.volume, 4)
+                                    }))
+                        continue
+                    
                     if raw.get("type") == "telemetry":
                         telemetry = TelemetryPayload.model_validate(raw)
                         session.latest_pose = telemetry.pose_data
@@ -271,6 +326,21 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                         continue
 
                     payload = StreamPayload.model_validate(raw)
+                    
+                    # FAST PATH: Stream realtime metrics on EVERY chunk (no buffering)
+                    rt_metrics = await run_in_threadpool(
+                        session.engine.get_realtime_metrics,
+                        payload.audio_chunk
+                    )
+                    if rt_metrics and rt_metrics.is_voiced:
+                        await websocket.send_text(json.dumps({
+                            "type": "metrics_update",
+                            "timestamp": payload.timestamp,
+                            "pitch": round(rt_metrics.pitch, 2),
+                            "volume": round(rt_metrics.volume, 4)
+                        }))
+                    
+                    # SLOW PATH: Full prosody + ASR (buffered)
                     prosody, transcript = await run_in_threadpool(
                         session.engine.process_stream, 
                         payload.audio_chunk,
@@ -278,11 +348,22 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                     )
                     await manager.store_results(session_id, prosody, transcript)
 
-                    # Handle feedback (LiveAnalyzer first, then LLM)
+                    # Handle feedback (Visual only now)
                     await handle_live_analyzer(session, websocket, prosody)
                     
                     if transcript and transcript.text and getattr(transcript, "is_final", False):
                         logger.info(f"Transcript: '{transcript.text}'")
+                        
+                        # Trigger WPM update
+                        current_wpm = session.update_wpm(transcript)
+                        
+                        # Broadcast WPM
+                        await websocket.send_text(json.dumps({
+                            "type": "wpm_update",
+                            "wpm": round(current_wpm, 1),
+                            "timestamp": transcript.end_time
+                        }))
+
                         await handle_llm_feedback(session, websocket, transcript)
 
                 except ValidationError as e:
@@ -293,6 +374,15 @@ async def audio_websocket_endpoint(websocket: WebSocket):
             if extra and extra.text and getattr(extra, "is_final", False):
                 logger.info(f"Async transcript: '{extra.text}'")
                 await manager.store_results(session_id, None, extra)
+                
+                # Trigger WPM update for async transcripts too
+                current_wpm = session.update_wpm(extra)
+                await websocket.send_text(json.dumps({
+                    "type": "wpm_update",
+                    "wpm": round(current_wpm, 1),
+                    "timestamp": extra.end_time
+                }))
+
                 await handle_llm_feedback(session, websocket, extra)
 
     except WebSocketDisconnect:

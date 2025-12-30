@@ -21,6 +21,11 @@ class PoseFeedbackEngine:
         self.prev_face_landmarks: Optional[List[Dict[str, float]]] = None
         # cache shoulder width for normalization-derived heuristics
         self._last_shoulder_width: float = 1.0
+        
+        # Heuristics State
+        self.script_reading_frames = 0
+        self.looking_away_frames = 0
+        self.calibration = {"neutral_neck_height": None}
 
     # ---------- NORMALIZATION ----------
     def normalize_by_thorax(self, landmarks: List[Dict[str, float]]) -> List[Tuple[float, float, float]]:
@@ -249,7 +254,127 @@ class PoseFeedbackEngine:
             msgs.append("Open posture")
         return msgs
 
-    # ---------- MAIN ENTRY ----------
+    # ---------- ADVANCED HEURISTICS ----------
+    def analyze_eye_contact(self, face: List[Dict[str, float]]) -> Dict[str, float | str | bool]:
+        """
+        Analyze gaze deviation to detect eye contact or looking away.
+        Uses Iris Deviation from Eye Center heuristics.
+        """
+        if not face or len(face) < 474:
+            return {"deviation": 0.0, "status": "unknown"}
+
+        # Indices
+        LEFT_IRIS = 468
+        RIGHT_IRIS = 473
+        LEFT_EYE_CORNERS = (33, 133)
+        RIGHT_EYE_CORNERS = (362, 263)
+
+        def get_pt(idx): return np.array([face[idx].get("x",0), face[idx].get("y",0)])
+
+        # Left Eye Calculation
+        l_iris = get_pt(LEFT_IRIS)
+        l_inner, l_outer = get_pt(LEFT_EYE_CORNERS[0]), get_pt(LEFT_EYE_CORNERS[1])
+        l_width = np.linalg.norm(l_outer - l_inner)
+        l_center = (l_inner + l_outer) / 2.0
+        # Deviation normalized by eye width
+        l_dev = np.linalg.norm(l_iris - l_center) / (l_width + 1e-6)
+
+        # Right Eye Calculation
+        r_iris = get_pt(RIGHT_IRIS)
+        r_inner, r_outer = get_pt(RIGHT_EYE_CORNERS[0]), get_pt(RIGHT_EYE_CORNERS[1])
+        r_width = np.linalg.norm(r_outer - r_inner)
+        r_center = (r_inner + r_outer) / 2.0
+        r_dev = np.linalg.norm(r_iris - r_center) / (r_width + 1e-6)
+
+        avg_dev = (l_dev + r_dev) / 2.0
+
+        # State Tracking
+        if avg_dev > 0.15: # Threshold for looking away
+            self.looking_away_frames += 1
+        else:
+            self.looking_away_frames = 0
+            
+        status = "camera"
+        if self.looking_away_frames > 30: # ~1-2 seconds
+            status = "distracted"
+        
+        return {
+            "deviation": float(avg_dev),
+            "status": status,
+            "looking_at_camera": avg_dev < 0.15
+        }
+
+    def analyze_script_reading(self, pose: List[Dict[str, float]]) -> Dict[str, float | bool]:
+        """
+        Detects if user is reading from a script by checking sustained head-down posture.
+        Uses Nose vs Ears vertical alignment.
+        """
+        if not pose or len(pose) < 9: # Need nose(0) and ears(7,8)
+            return {"is_reading": False}
+
+        nose_y = pose[0].get("y", 0.0)
+        left_ear_y = pose[7].get("y", 0.0)
+        right_ear_y = pose[8].get("y", 0.0)
+        avg_ear_y = (left_ear_y + right_ear_y) / 2.0
+
+        # In MediaPipe Image coords, Y increases downwards.
+        # If looking down, Nose Y increases (moves down) relative to Ears.
+        # If Nose is significantly "below" ears (y > ear_y), head is tilted down.
+        # We need a robust delta.
+        
+        # Calibration: Capture neutral on first few frames? 
+        # Heuristic: Nose usually slightly below ears in neutral 2D projection.
+        # Let's use a change detection or absolute threshold.
+        # Assume if nose is > 0.05 units below ears implies tilt.
+        
+        neck_tilt_scan = nose_y - avg_ear_y # Positive means nose is below ears
+        
+        # Threshold: > 0.08 seems like a distinct nod/look down in normalized coords
+        is_head_down = neck_tilt_scan > 0.06 
+
+        if is_head_down:
+            self.script_reading_frames += 1
+        else:
+            self.script_reading_frames = 0
+
+        # Trigger if sustained for ~2-3 seconds (assuming ~15-30fps, say 45 frames)
+        is_reading = self.script_reading_frames > 45
+
+        return {
+            "head_tilt_val": float(neck_tilt_scan),
+            "is_head_down": is_head_down,
+            "is_reading": is_reading
+        }
+
+    def analyze_micro_gestures(self, pose: List[Dict[str, float]], face: List[Dict[str, float]]) -> Dict[str, bool]:
+        """
+        Detect hand-to-face signals (nervousness/thinking).
+        """
+        if not pose or not face:
+            return {"hand_near_face": False}
+
+        # Face Height
+        forehead = face[10]
+        chin = face[152]
+        face_height = np.linalg.norm(np.array([forehead.get("x",0), forehead.get("y",0)]) - 
+                                     np.array([chin.get("x",0), chin.get("y",0)]))
+        
+        # Face Center (using Nose)
+        nose = pose[0]
+        nose_pt = np.array([nose.get("x",0), nose.get("y",0)])
+        
+        # Hands
+        left_wrist = np.array([pose[15].get("x",0), pose[15].get("y",0)])
+        right_wrist = np.array([pose[16].get("x",0), pose[16].get("y",0)])
+
+        threshold = face_height * 1.5
+
+        l_dist = np.linalg.norm(left_wrist - nose_pt)
+        r_dist = np.linalg.norm(right_wrist - nose_pt)
+
+        is_near = (l_dist < threshold) or (r_dist < threshold)
+        
+        return {"hand_near_face": bool(is_near)}
     def process_chunk(self, chunk: Dict) -> Dict:
         pose_data: Dict = chunk.get("pose_data", {})
         timestamp: float = float(chunk.get("timestamp", 0.0))
@@ -286,6 +411,11 @@ class PoseFeedbackEngine:
         arms = self.arms_metrics(pose_landmarks)
         arms_fb = self.arms_feedback(arms)
 
+        # Advanced Heuristics
+        eye_metrics = self.analyze_eye_contact(face_landmarks)
+        script_reading = self.analyze_script_reading(pose_landmarks)
+        micro_gesture = self.analyze_micro_gestures(pose_landmarks, face_landmarks)
+
         # --- LLM-ready summary (concise) ---
         def level(v: float, lo: float, hi: float) -> str:
             return "low" if v < lo else "medium" if v < hi else "high"
@@ -316,6 +446,11 @@ class PoseFeedbackEngine:
 
         posture_open = not arms.get("arms_crossed", False)
         hands_state = "together" if arms.get("hands_together", False) else "apart"
+        
+        # New Cognitive / Heuristic States
+        eye_status = str(eye_metrics.get("status", "unknown"))
+        reading_status = bool(script_reading.get("is_reading", False))
+        nervous_gesture = bool(micro_gesture.get("hand_near_face", False))
 
         summary = {
             "posture": {
@@ -326,7 +461,12 @@ class PoseFeedbackEngine:
                     "elbows": elbows_state,
                     "hands": hands_state,
                     "crossed": bool(arms.get("arms_crossed", False)),
+                    "hand_near_face": nervous_gesture
                 },
+                "head": {
+                   "is_reading_script": reading_status,
+                   "looking_at": eye_status
+                }
             },
             "behavior": {
                 "gestures": gestures_level,
@@ -339,6 +479,15 @@ class PoseFeedbackEngine:
                 "depth": depth,
             },
         }
+
+        # Append advanced feedback
+        feedbacks = self.generate_feedback(metrics) + arms_fb
+        if reading_status:
+           feedbacks.append("Potential script reading detected")
+        if nervous_gesture:
+           feedbacks.append("Hand touching face detected")
+        if eye_status == "distracted":
+           feedbacks.append("Low eye contact")
 
         return {
             "session_id": session_id,
@@ -357,7 +506,9 @@ class PoseFeedbackEngine:
                 "right_arm_raised": arms["right_arm_raised"],
                 "hands_together": arms["hands_together"],
                 "arms_crossed": arms["arms_crossed"],
+                "gaze_deviation": eye_metrics.get("deviation", 0.0),
+                "head_tilt": script_reading.get("head_tilt_val", 0.0)
             },
-            "feedback": self.generate_feedback(metrics) + arms_fb,
+            "feedback": feedbacks,
             "summary": summary,
         }

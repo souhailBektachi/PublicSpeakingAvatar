@@ -110,7 +110,10 @@ class LiveAnalyzer:
                 
             return {
                 "type": "audio_feedback",
-                "audio": audio_data
+                "audio": audio_data,
+                "message": message,
+                "category": category,
+                "status": status
             }
         except Exception as e:
             logger.error(f"Error reading audio file {audio_path}: {e}")
