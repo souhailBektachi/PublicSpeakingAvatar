@@ -6,7 +6,7 @@ from src.services.audio_engine import AudioEngine
 from src.services.live_analyzer import LiveAnalyzer
 from src.services.llm_coach import LLMCoach
 from src.services.analyzers.summarizer import FeedbackSummarizer
-from src.services.synthesizers.elevenlabs import ElevenLabsSynthesizer
+from src.services.synthesizers.kokoro import KokoroSynthesizer
 from src.schemas.audio_metrics import AudioFeatures, TimestampsSegment
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class Session:
         self.live_analyzer = LiveAnalyzer()
         self.llm_coach = LLMCoach()
         self.summarizer = FeedbackSummarizer()
-        self.tts = ElevenLabsSynthesizer()
+        self.tts = KokoroSynthesizer()
         self.audio_coordinator = AudioCoordinator(cooldown=5.0)
         
         # State

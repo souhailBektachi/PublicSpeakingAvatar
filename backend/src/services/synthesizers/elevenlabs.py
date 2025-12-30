@@ -4,6 +4,7 @@ from typing import Optional
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
 from src.core.config import settings
+from src.services.rhubarb_service import get_rhubarb_service
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,27 @@ class ElevenLabsSynthesizer:
         except Exception as e:
             logger.error(f"Synthesis failed: {e}")
             return None
+
+    def synthesize_with_visemes(self, text: str, voice_id: Optional[str] = None) -> Optional[dict]:
+        """
+        Convert text to speech and return audio with viseme data for lip sync.
+        
+        Returns:
+            Dict with 'audio' (base64) and 'visemes' (list of {time, shape}), or None on failure.
+        """
+        audio_base64 = self.synthesize(text, voice_id)
+        if not audio_base64:
+            return None
+        
+        result = {"audio": audio_base64, "visemes": None}
+        
+        # Extract visemes using Rhubarb
+        rhubarb_service = get_rhubarb_service()
+        lip_sync = rhubarb_service.extract_visemes(audio_base64, audio_format="mp3")
+        if lip_sync:
+            result["visemes"] = rhubarb_service.visemes_to_dict(lip_sync)
+        
+        return result
 
     def synthesize_to_file(self, text: str, output_path: str, voice_id: Optional[str] = None) -> bool:
         """Convert text to speech and save it to a file."""

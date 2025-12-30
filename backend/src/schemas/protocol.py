@@ -15,6 +15,7 @@ class FeedbackResponse(BaseModel):
     type: str = "feedback"
     feedback: Optional[str] = None
     audio: Optional[str] = None
+    visemes: Optional[dict] = None  # Lip sync data: {duration, visemes: [{time, shape}]}
     sentiment: Optional[str] = None
     timestamp: Optional[float] = None
 

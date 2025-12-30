@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, sentiment: str = None, source: str = "unknown"):
-    """Send audio feedback if coordinator allows. Returns True if sent."""
+async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, visemes: dict = None, sentiment: str = None, source: str = "unknown"):
+    """Send audio feedback with optional visemes if coordinator allows. Returns True if sent."""
     if not audio or not session.audio_coordinator.can_send_audio(source):
         return False
     
-    response = FeedbackResponse(audio=audio, sentiment=sentiment)
+    response = FeedbackResponse(audio=audio, visemes=visemes, sentiment=sentiment)
     await websocket.send_text(response.model_dump_json(exclude_none=True))
     session.audio_coordinator.mark_audio_sent(source)
-    logger.info(f"Audio sent ({source})")
+    logger.info(f"Audio sent ({source}), visemes: {visemes is not None}")
     return True
 
 
@@ -34,7 +34,7 @@ async def handle_live_analyzer(session: Session, websocket: WebSocket, prosody):
     
     feedback = session.live_analyzer.analyze(prosody)
     audio = feedback.get("audio") if feedback else None
-    await send_audio_feedback(session, websocket, audio, source="LiveAnalyzer")
+    await send_audio_feedback(session, websocket, audio, visemes=None, source="LiveAnalyzer")
 
 
 async def handle_llm_feedback(session: Session, websocket: WebSocket, transcript: TimestampsSegment):
@@ -57,13 +57,17 @@ async def handle_llm_feedback(session: Session, websocket: WebSocket, transcript
 
     logger.info(f"LLM buffered text: '{full_text}' [{emotion}]")
 
-    # Generate TTS if coordinator allows
+    # Generate TTS with visemes if coordinator allows
     audio = None
+    visemes = None
     if full_text.strip() and session.tts.is_enabled() and session.audio_coordinator.can_send_audio("LLM"):
-        logger.info(f"Generating TTS for: '{full_text}'")
-        audio = await run_in_threadpool(session.tts.synthesize, full_text)
+        logger.info(f"Generating TTS with visemes for: '{full_text}'")
+        result = await run_in_threadpool(session.tts.synthesize_with_visemes, full_text)
+        if result:
+            audio = result.get("audio")
+            visemes = result.get("visemes")
     
-    await send_audio_feedback(session, websocket, audio, emotion, source="LLM")
+    await send_audio_feedback(session, websocket, audio, visemes, emotion, source="LLM")
     
     # Store in history
     stored = f"[{emotion}] {full_text}" if emotion else full_text
@@ -84,19 +88,12 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
         return
     
     logger.info(f"Generating report ({len(session.transcript_history)} transcripts)...")
-    logger.info(f"Generating report ({len(session.transcript_history)} transcripts)...")
     report = await session.generate_report()
     
-    # Debug: Log report structure
-    logger.info(f"TTS enabled: {session.tts.is_enabled()}")
-    logger.info(f"Report type: {type(report).__name__}")
-    if isinstance(report, dict):
-        logger.info(f"Report keys: {list(report.keys())}")
-    
-    # Find items - handle different report structures
+    # Process items in report for TTS
     if isinstance(report, dict):
         # Try common keys
-        items = report.get("session_report") or report.get("report") or report.get("feedback") or []
+        items = report.get("session_report") or report.get("report") or report.get("feedback") or report.get("timeline") or []
         if not items and len(report) == 1:
             # If dict has single key, use its value
             items = list(report.values())[0] if isinstance(list(report.values())[0], list) else []
@@ -119,14 +116,20 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
             
             if message and session.tts.is_enabled():
                 logger.info(f"Generating TTS for item {i+1}: {message[:30]}")
-                audio = await run_in_threadpool(session.tts.synthesize, message)
-                if audio:
-                    # Append audio to the first feedback item that has a message
+                # Use synthesize_with_visemes to get lip sync data
+                result = await run_in_threadpool(session.tts.synthesize_with_visemes, message)
+                
+                if result and result.get("audio"):
+                    audio = result.get("audio")
+                    visemes = result.get("visemes")
+                    
+                    # Append audio and visemes to the first feedback item that has a message
                     for fb in feedback_list:
                          if isinstance(fb, dict) and fb.get("message") == message:
                              fb["audio"] = audio
+                             fb["visemes"] = visemes
                              break
-                    logger.info(f"TTS generated for item {i+1}")
+                    logger.info(f"TTS + Visemes generated for item {i+1}")
                 else:
                     logger.warning(f"TTS failed for item {i+1}")
         
@@ -135,10 +138,12 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
              text = feedback_list
              if text and session.tts.is_enabled():
                 logger.info(f"Generating TTS for item {i+1}: {item.get('issue', 'N/A')[:30]}")
-                audio = await run_in_threadpool(session.tts.synthesize, text)
-                if audio:
-                    item["audio"] = audio
-                    logger.info(f"TTS generated for item {i+1}")
+                result = await run_in_threadpool(session.tts.synthesize_with_visemes, text)
+                
+                if result and result.get("audio"):
+                    item["audio"] = result.get("audio")
+                    item["visemes"] = result.get("visemes")
+                    logger.info(f"TTS + Visemes generated for item {i+1}")
                 else:
                     logger.warning(f"TTS failed for item {i+1}")
     
