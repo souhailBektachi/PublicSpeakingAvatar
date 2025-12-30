@@ -6,6 +6,8 @@ import uuid
 import asyncio
 import time
 import json
+from pathlib import Path
+from src.services.analyzers.pose_interpreter import PoseFeedbackEngine
 
 from src.schemas.protocol import StreamPayload, FeedbackResponse, ReportResponse, TelemetryPayload
 from src.services.session_manager import manager, Session
@@ -14,6 +16,20 @@ from src.schemas.audio_metrics import TimestampsSegment
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+def _summary_to_text(summary: dict) -> str:
+    posture = summary.get("posture", {})
+    arms = posture.get("arms", {})
+    behavior = summary.get("behavior", {})
+    position = summary.get("position", {})
+
+    open_posture = posture.get("open", True)
+    parts = [
+        f"Posture={'open' if open_posture else 'closed'}",
+        f"Arms(left_raised={arms.get('left_raised', False)},right_raised={arms.get('right_raised', False)},elbows={arms.get('elbows','neutral')},hands={arms.get('hands','apart')},crossed={arms.get('crossed', False)})",
+        f"Behavior(gestures={behavior.get('gestures','medium')},facial_expression={behavior.get('facial_expression','medium')},facial_energy={behavior.get('facial_energy','medium')},movement={behavior.get('movement','static')})",
+        f"Position(horizontal={position.get('horizontal','center')},depth={position.get('depth','middle')})",
+    ]
+    return "; ".join(parts)
 
 async def send_audio_feedback(session: Session, websocket: WebSocket, audio: str, visemes: dict = None, sentiment: str = None, source: str = "unknown"):
     """Send audio feedback with optional visemes if coordinator allows. Returns True if sent."""
@@ -159,6 +175,13 @@ async def audio_websocket_endpoint(websocket: WebSocket):
     if not session:
         return
 
+    # Pose interpretation setup (per session)
+    pose_engine = PoseFeedbackEngine()
+    BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
+    POSE_DIR = BASE_DIR / "assets" / "pose"
+    POSE_DIR.mkdir(parents=True, exist_ok=True)
+    POSE_OUT = POSE_DIR / "pose_interpretation.jsonl"
+
     try:
         while True:
             data = None
@@ -180,6 +203,51 @@ async def audio_websocket_endpoint(websocket: WebSocket):
                         telemetry = TelemetryPayload.model_validate(raw)
                         session.latest_pose = telemetry.pose_data
                         session.last_telemetry_time = telemetry.timestamp
+
+                        # Run pose interpretation and aggregate output every 1.5s
+                        try:
+                            result = pose_engine.process_chunk({
+                                "session_id": session_id,
+                                "timestamp": telemetry.timestamp,
+                                "pose_data": telemetry.pose_data,
+                            })
+
+                            last_time = getattr(session, "pose_summary_last_time", 0.0)
+                            if telemetry.timestamp - last_time >= 1.5:
+                                setattr(session, "pose_summary_last_time", telemetry.timestamp)
+
+                                summary_record = {
+                                    "type": "pose_summary",
+                                    "session_id": session_id,
+                                    "timestamp": telemetry.timestamp,
+                                    "summary": result.get("summary", {}),
+                                }
+
+                                # Write asynchronously to keep loop responsive
+                                def _write_out(entry: dict):
+                                    with POSE_OUT.open("a", encoding="utf-8") as f:
+                                        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                                await run_in_threadpool(_write_out, summary_record)
+                                logger.info(
+                                    f"Pose summary written for {session_id} at {telemetry.timestamp:.2f}s"
+                                )
+
+                                # Also append to LLM context for posture-aware feedback
+                                try:
+                                    summary_text = _summary_to_text(summary_record["summary"]) if summary_record.get("summary") else ""
+                                    if summary_text:
+                                        session.llm_context.append({
+                                            "role": "user",
+                                            "content": f"Posture update: {summary_text}"
+                                        })
+                                        logger.info("Posture summary appended to LLM context")
+                                        # keep context bounded
+                                        if len(session.llm_context) > 200:
+                                            session.llm_context = session.llm_context[-200:]
+                                except Exception as e:
+                                    logger.error(f"Failed to append posture summary to LLM context: {e}")
+                        except Exception as e:
+                            logger.error(f"Pose interpretation error: {e}")
                         
                         if telemetry.is_speaking:
                             session.last_speech_end_time = telemetry.timestamp
