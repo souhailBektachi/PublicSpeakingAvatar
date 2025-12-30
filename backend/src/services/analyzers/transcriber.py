@@ -36,11 +36,11 @@ class Transcriber:
         duration = len(new_chunk) / self.sample_rate
         
         if timestamp is not None:
-            start_time = timestamp
+            end_time = timestamp
+            start_time = end_time - duration
         else:
             start_time = self.processed_samples / self.sample_rate
-            
-        end_time = start_time + duration
+            end_time = start_time + duration
         self.processed_samples += len(new_chunk)
         
         text = ""

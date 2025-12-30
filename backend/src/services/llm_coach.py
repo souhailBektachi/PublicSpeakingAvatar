@@ -1,7 +1,7 @@
 import logging
 import json
-from typing import List, Optional, Dict, Generator, Tuple
-from groq import Groq
+from typing import List, Optional, Dict, Generator, Tuple, AsyncGenerator
+from groq import AsyncGroq
 from src.core.config import settings
 from src.schemas.audio_metrics import TimestampsSegment, FeedbackSummary
 
@@ -9,18 +9,18 @@ logger = logging.getLogger(__name__)
 
 class LLMCoach:
     def __init__(self):
-        self.client = Groq(api_key=settings.GROQ_API_KEY)
+        self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
         # llama-3.3-70b-versatile follows prompts better than qwen3
         self.model = "llama-3.3-70b-versatile"
 
-    def generate_live_feedback(self, messages: List[Dict[str, str]]) -> Generator[Tuple[str, Optional[str]], None, None]:
+    async def generate_live_feedback(self, messages: List[Dict[str, str]]) -> AsyncGenerator[Tuple[str, Optional[str]], None]:
         """
         Streamed live feedback based on conversation history.
         Yields: (text_chunk, emotion_tag)
         """
         try:
             # We assume 'messages' already contains the latest user input
-            response_stream = self.client.chat.completions.create(
+            response_stream = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.6,
@@ -31,7 +31,7 @@ class LLMCoach:
             buffer = ""
             current_emotion = None
             
-            for chunk in response_stream:
+            async for chunk in response_stream:
                 content = chunk.choices[0].delta.content or ""
                 if not content:
                     continue
@@ -78,7 +78,7 @@ class LLMCoach:
             logger.error(f"Error generating live feedback: {e}")
             yield "", None
 
-    def generate_final_report(
+    async def generate_final_report(
         self, 
         transcript_history: List[TimestampsSegment], 
         summary_stats: FeedbackSummary,
@@ -89,55 +89,38 @@ class LLMCoach:
         Returns a Python dictionary (parsed JSON).
         """
         try:
-            formatted_transcript = self._format_transcript(transcript_history)
+            # Build the mathematical skeleton (Speech + Silence blocks)
+            timeline_skeleton = self._build_timeline_skeleton(transcript_history)
+            skeleton_json = json.dumps(timeline_skeleton, indent=2)
+
             formatted_history = self._format_llm_history(llm_context)
-            
-            if not formatted_transcript:
-                return {"error": "No transcript data available"}
 
             # Convert summary Pydantic model to string/dict representation
             summary_json = summary_stats.model_dump_json(indent=2)
 
             system_prompt = (
-                "You are an expert Public Speaking Coach. Generate a 'Final Session Report' in JSON format.\n"
-                "Use ALL the provided data:\n"
-                "- 'Transcript': What the speaker said with timestamps\n"
-                "- 'Session Summary Stats': Contains prosody metrics (pitch, volume, hesitation, fluency scores)\n"
-                "- 'Feedback History': Your live coaching interventions during the session\n\n"
-                "IMPORTANT: Analyze the SESSION SUMMARY STATS carefully and incorporate these insights:\n"
-                "- Pitch dynamics and range: Was the speaker monotone or expressive?\n"
-                "- Volume levels: Were they too quiet, too loud, or well-modulated?\n"
-                "- Hesitation rate: Did they use filler words or pause excessively?\n"
-                "- Fluency: Was their speech smooth or choppy?\n"
-                "- Overall prosody score: Reference this in your Session Overview\n\n"
-                "Output Format: A single JSON list:\n"
-                "[\n"
-                "  {\n"
-                "    \"timestamp_start\": \"MM:SS\" (or null if general),\n"
-                "    \"timestamp_end\": \"MM:SS\" (or null if general),\n"
-                "    \"category\": \"Content\" | \"Delivery\" | \"Prosody\" | \"Engagement\",\n"
-                "    \"emotion\": \"Encouraging\" | \"Impressed\" | \"Concerned\" | \"Supportive\" | \"Constructive\",\n"
-                "    \"issue\": \"Short Label\",\n"
-                "    \"feedback\": \"Contextualized explanation using transcript AND metrics...\",\n"
-                "    \"score\": 0-100\n"
-                "  }, ...\n"
-                "]\n"
-                "Include items for both content (what they said) AND delivery (how they said it).\n"
-                "TIMESTAMPS ARE REQUIRED for all items:\n"
-                "- Content items: Use timestamps from the TRANSCRIPT (format: [MM:SS - MM:SS] text)\n"
-                "- Prosody/Delivery items: Use timestamps from the METRICS (start_time, end_time)\n"
-                "- Only Session Overview can have null timestamps\n"
-                "End with a 'Session Overview' item summarizing overall performance."
+                "You are an expert Public Speaking Coach. Your task is to ANNOTATE an existing Session Timeline.\n"
+                "You will be given a JSON 'Timeline Skeleton' containing 'speech' and 'silence' segments.\n"
+                "- Do NOT change the timestamps.\n"
+                "- Do NOT change the content.\n"
+                "- Your job is to fill the empty \"feedback\" array for each segment based on the context.\n\n"
+                "Use the provided 'Session Summary Stats' (pitch, volume, hesitation) to inform your feedback.\n\n"
+                "RULES for FEEDBACK:\n"
+                "1. For 'speech' segments: Analyze content quality, clarity, and delivery metrics.\n"
+                "2. For 'silence' segments: If > 4s, warn about dead air. If 2-4s, check if it's a good pause or awkward.\n"
+                "3. Format each feedback item as: { \"category\": \"...\", \"sentiment\": \"positive|neutral|negative|warning\", \"message\": \"...\" }\n"
+                "4. Add a 'Session Overview' segment at the end of the timeline (timestamp_start=0, timestamp_end=total_duration) with general feedback.\n\n"
+                "Output: The FULL JSON Timeline with your added feedback arrays."
             )
             
             user_content = (
-                f"TRANSCRIPT:\n{formatted_transcript}\n\n"
-                f"SESSION SUMMARY STATS (PROSODY METRICS):\n{summary_json}\n\n"
-                f"FEEDBACK HISTORY (Your past interventions):\n{formatted_history}\n\n"
-                "Generate a comprehensive JSON report that analyzes BOTH content AND delivery metrics."
+                f"TIMELINE SKELETON (Annotate this):\n{skeleton_json}\n\n"
+                f"SESSION SUMMARY STATS (Metrics):\n{summary_json}\n\n"
+                f"FEEDBACK HISTORY (Past interventions):\n{formatted_history}\n\n"
+                "Return the valid JSON timeline with annotations."
             )
 
-            completion = self.client.chat.completions.create(
+            completion = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -156,6 +139,42 @@ class LLMCoach:
             logger.error(f"Error generating final report: {e}")
             return {"error": str(e)}
 
+    def _build_timeline_skeleton(self, transcript_history: List[TimestampsSegment]) -> List[Dict]:
+        """
+        Mathematically constructs the timeline with Speech and Silence segments.
+        """
+        timeline = []
+        last_end_time = 0.0
+        
+        # Sort by start time just in case
+        sorted_segments = sorted(transcript_history, key=lambda x: x.start_time)
+        
+        for segment in sorted_segments:
+            # Check for silence gap (> 2.0s)
+            gap = segment.start_time - last_end_time
+            if gap > 2.0:
+                timeline.append({
+                    "type": "silence",
+                    "timestamp_start": round(last_end_time, 2),
+                    "timestamp_end": round(segment.start_time, 2),
+                    "duration": round(gap, 2),
+                    "content": None,
+                    "feedback": []
+                })
+            
+            # Add speech segment
+            timeline.append({
+                "type": "speech",
+                "timestamp_start": round(segment.start_time, 2),
+                "timestamp_end": round(segment.end_time, 2),
+                "content": segment.text,
+                "feedback": []
+            })
+            
+            last_end_time = max(last_end_time, segment.end_time)
+            
+        return timeline
+
     def _format_llm_history(self, llm_context: List[Dict[str, str]]) -> str:
         """Helper to format the conversation history for the final report."""
         lines = []
@@ -166,17 +185,3 @@ class LLMCoach:
                 continue # Skip system prompt
             lines.append(f"[{role.upper()}]: {content}")
         return "\n".join(lines)
-
-    def _format_transcript(self, transcript_history: List[TimestampsSegment]) -> str:
-        """Helper to format transcript history."""
-        lines = []
-        for segment in transcript_history:
-            start_str = self._seconds_to_min_sec(segment.start_time)
-            end_str = self._seconds_to_min_sec(segment.end_time)
-            lines.append(f"[{start_str} - {end_str}] \"{segment.text}\"")
-        return "\n".join(lines)
-
-    def _seconds_to_min_sec(self, seconds: float) -> str:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins:02}:{secs:02}"

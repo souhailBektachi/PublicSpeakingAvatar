@@ -50,7 +50,7 @@ async def handle_llm_feedback(session: Session, websocket: WebSocket, transcript
     
     # Buffer LLM response
     full_text, emotion = "", None
-    for chunk, e in session.llm_coach.generate_live_feedback(session.llm_context):
+    async for chunk, e in session.llm_coach.generate_live_feedback(session.llm_context):
         if e:
             emotion = e
         full_text += chunk
@@ -84,7 +84,8 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
         return
     
     logger.info(f"Generating report ({len(session.transcript_history)} transcripts)...")
-    report = await run_in_threadpool(session.generate_report)
+    logger.info(f"Generating report ({len(session.transcript_history)} transcripts)...")
+    report = await session.generate_report()
     
     # Debug: Log report structure
     logger.info(f"TTS enabled: {session.tts.is_enabled()}")
@@ -107,15 +108,39 @@ async def generate_and_send_report(session: Session, websocket: WebSocket):
     logger.info(f"Found {len(items)} items for TTS")
     
     for i, item in enumerate(items):
-        text = item.get("feedback", "")
-        if text and session.tts.is_enabled():
-            logger.info(f"Generating TTS for item {i+1}: {item.get('issue', 'N/A')[:30]}")
-            audio = await run_in_threadpool(session.tts.synthesize, text)
-            if audio:
-                item["audio"] = audio
-                logger.info(f"TTS generated for item {i+1}")
-            else:
-                logger.warning(f"TTS failed for item {i+1}")
+        feedback_list = item.get("feedback", [])
+        if isinstance(feedback_list, list):
+             # If feedback is a list, generate TTS for the first "message" found
+            message = ""
+            for fb in feedback_list:
+                if isinstance(fb, dict) and fb.get("message"):
+                    message = fb.get("message")
+                    break
+            
+            if message and session.tts.is_enabled():
+                logger.info(f"Generating TTS for item {i+1}: {message[:30]}")
+                audio = await run_in_threadpool(session.tts.synthesize, message)
+                if audio:
+                    # Append audio to the first feedback item that has a message
+                    for fb in feedback_list:
+                         if isinstance(fb, dict) and fb.get("message") == message:
+                             fb["audio"] = audio
+                             break
+                    logger.info(f"TTS generated for item {i+1}")
+                else:
+                    logger.warning(f"TTS failed for item {i+1}")
+        
+        elif isinstance(feedback_list, str):
+             # Fallback for old string format
+             text = feedback_list
+             if text and session.tts.is_enabled():
+                logger.info(f"Generating TTS for item {i+1}: {item.get('issue', 'N/A')[:30]}")
+                audio = await run_in_threadpool(session.tts.synthesize, text)
+                if audio:
+                    item["audio"] = audio
+                    logger.info(f"TTS generated for item {i+1}")
+                else:
+                    logger.warning(f"TTS failed for item {i+1}")
     
     await websocket.send_text(ReportResponse(report=report).model_dump_json())
     logger.info("Report sent")

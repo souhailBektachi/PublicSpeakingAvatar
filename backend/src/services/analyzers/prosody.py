@@ -32,9 +32,8 @@ class ProsodyAnalyzer:
         chunk_duration = len(new_chunk) / self.target_sr
         
         if timestamp is not None:
-            # If timestamp is provided, it marks the start of new_chunk.
-            # window_end is the end of new_chunk.
-            window_end = timestamp + chunk_duration
+            # If timestamp is provided, it marks the moment the chunk was finished.
+            window_end = timestamp
         else:
             window_end = self.processed_samples / self.target_sr
             

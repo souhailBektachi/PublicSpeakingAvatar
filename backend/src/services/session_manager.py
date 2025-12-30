@@ -98,12 +98,12 @@ class Session:
     async def send_json(self, data: dict):
         await self.websocket.send_json(data)
 
-    def generate_report(self) -> dict:
+    async def generate_report(self) -> dict:
         """
         Generates final report using accumulated history.
         """
         summary = self.summarizer.summarize(self.metrics_history)
-        return self.llm_coach.generate_final_report(self.transcript_history, summary, self.llm_context)
+        return await self.llm_coach.generate_final_report(self.transcript_history, summary, self.llm_context)
 
 class SessionManager:
     def __init__(self):
